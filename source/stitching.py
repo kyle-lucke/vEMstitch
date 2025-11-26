@@ -7,7 +7,8 @@ import os
 from refinement import refinement_local, fast_brief
 
 
-def stitching_pair(im1, im2, im1_mask, im2_mask, mode, overlap=0.15):
+
+def stitching_pair(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, overlap=0.15):
     kp1, dsp1, kp2, dsp2 = SIFT(im1, im2)
     im1_shape = im1.shape
     im2_shape = im2.shape
@@ -19,11 +20,11 @@ def stitching_pair(im1, im2, im1_mask, im2_mask, mode, overlap=0.15):
         im1_region = [0, im1_shape[0]]
         im2_region = [0, im2_shape[0]]
         H, ok, X1, X2 = fast_brief(im1, im2, im1_mask, im2_mask, X1, X2, height, im1_region, im2_region, mode)
-        stitching_res, _, _, mass, overlap_mass = local_TPS(im1, im2, H, X1.T[:, ok], X2.T[:, ok], im1_mask,
+        stitching_res, _, _, mass, overlap_mass = local_TPS(im1, im2, im1_color, im2_color, H, X1.T[:, ok], X2.T[:, ok], im1_mask,
                                                             im2_mask, mode)
         return stitching_res, mass, overlap_mass
 
-    stitching_res, _, _, mass, overlap_mass = local_TPS(im1, im2, H, X1.T[:, ok], X2.T[:, ok], im1_mask, im2_mask, mode)
+    stitching_res, _, _, mass, overlap_mass = local_TPS(im1, im2, im1_color, im2_color, H, X1.T[:, ok], X2.T[:, ok], im1_mask, im2_mask, mode)
     return stitching_res, mass, overlap_mass
 
 
@@ -63,12 +64,12 @@ def preprocess(im1, im2, im1_mask, im2_mask, mode):
         return True, True, True
 
 
-def two_stitching(data_path, store_path, top_num, refine_flag=False):
+def two_stitching(data_path, store_path, top_num, file_ext, refine_flag=False):
     tier_list = []
     tier_mask_list = []
     for i in range(2):
-        img_1 = cv2.imread(os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_1", ".bmp"])))
-        img_2 = cv2.imread(os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_2", ".bmp"])))
+        img_1 = cv2.imread(os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_1", file_ext])))
+        img_2 = cv2.imread(os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_2", file_ext])))
 
         if img_1 is not None and img_2 is not None:
             img_1 = cv2.cvtColor(img_1, cv2.COLOR_BGR2GRAY)
@@ -104,50 +105,73 @@ def two_stitching(data_path, store_path, top_num, refine_flag=False):
     stitching_res, _, _ = stitching_rows(im1, im2, im1_mask, im2_mask, mode, refine_flag)
 
     final_res = np.uint8(stitching_res)
-    cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", ".bmp"])), final_res)
+    cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", file_ext])), final_res)
     return
 
+def read_image(fname, grayscale=True):
+    image = cv2.cvtColor(cv2.imread(fname), cv2.COLOR_BGR2RGB)
 
-def three_stitching(data_path, store_path, top_num, refine_flag=False, save_intermediate=False):
+    if grayscale:
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+
+    return image
+
+        
+def three_stitching(data_path, store_path, top_num, file_ext, refine_flag=False, save_intermediate=False):
+    
     tier_list = []
     tier_mask_list = []
     for i in range(3):
-        img_1 = cv2.imread(os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_1", ".bmp"])))
-        img_2 = cv2.imread(os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_2", ".bmp"])))
+        # img_1 = cv2.imread(os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_1", ".bmp"])))
+        # img_2 = cv2.imread(os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_2", ".bmp"])))
 
+        img_1_pth = os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_1", file_ext]))
+        img_2_pth = os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_2", file_ext]))
+
+        img_1 = read_image(img_1_pth)
+        img_2 = read_image(img_2_pth)
+
+        img1_color = read_image(img_1_pth, grayscale=False)
+        img2_color = read_image(img_2_pth, grayscale=False)
+        
+        print(f"stitching {img_1_pth} and {img_2_pth}")
+        print()
+        
         if img_1 is not None and img_2 is not None:
-            img_1 = cv2.cvtColor(img_1, cv2.COLOR_BGR2GRAY)
-            img_2 = cv2.cvtColor(img_2, cv2.COLOR_BGR2GRAY)
 
             mode = "r"
             stitching_res_temp, mass_temp, process_flag = preprocess(img_1, img_2, None, None, mode)
             if process_flag:
                 img_1_mask = np.ones(img_1.shape)
                 img_2_mask = np.ones(img_2.shape)
-                stitching_res, mass, _ = stitching_pair(img_1, img_2, img_1_mask, img_2_mask, mode)
+                stitching_res, mass, _ = stitching_pair(img_1, img_2, img1_color, img2_color, img_1_mask, img_2_mask, mode)
                 stitching_res = np.uint8(stitching_res)
+                
             else:
                 stitching_res, mass = stitching_res_temp, mass_temp
                 stitching_res = np.uint8(stitching_res)
+                
         elif img_1 is None:
-            img_2 = cv2.cvtColor(img_2, cv2.COLOR_BGR2GRAY)
+            # img_2 = cv2.cvtColor(img_2, cv2.COLOR_BGR2GRAY)
             stitching_res = img_2
             mass = np.ones(img_2.shape)
+            
         else:
-            img_1 = cv2.cvtColor(img_1, cv2.COLOR_BGR2GRAY)
+            # img_1 = cv2.cvtColor(img_1, cv2.COLOR_BGR2GRAY)
             stitching_res = img_1
             mass = np.ones(img_1.shape)
 
         if save_intermediate:
-            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_"+str(i+1), "_1+2", ".bmp"])), np.uint8(stitching_res))
-            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_"+str(i+1), "_1+2_mask", ".bmp"])), np.uint8(mass * 255))
+            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_"+str(i+1), "_1+2", file_ext])), np.uint8(stitching_res))
+            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_"+str(i+1), "_1+2_mask", file_ext])), np.uint8(mass * 255))
 
-        img_3 = cv2.imread(os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_3", ".bmp"])))
+        img_3_pth = os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_3", file_ext]))
+        img_3 = read_image(img_3_pth)
         if img_3 is None:
             tier_list.append(stitching_res)
             tier_mask_list.append(mass)
             continue
-        img_3 = cv2.cvtColor(img_3, cv2.COLOR_BGR2GRAY)
+        # img_3 = cv2.cvtColor(img_3, cv2.COLOR_BGR2GRAY)
         img_3_mask = np.ones(img_3.shape)
         mode = "r"
         stitching_res_temp, mass_temp, process_flag = preprocess(stitching_res, img_3, mass, None, mode)
@@ -161,9 +185,8 @@ def three_stitching(data_path, store_path, top_num, refine_flag=False, save_inte
         tier_mask_list.append(mass)
 
         if save_intermediate:
-            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_" + str(i + 1), "_1+2+3", ".bmp"])),
-                        np.uint8(stitching_res))
-            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_" + str(i + 1), "_1+2+3_mask", ".bmp"])), np.uint8(mass * 255))
+            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_" + str(i + 1), "_1+2+3", file_ext])), np.uint8(stitching_res))
+            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_" + str(i + 1), "_1+2+3_mask", file_ext])), np.uint8(mass * 255))
 
 
     while len(tier_list) >= 2:
@@ -181,13 +204,13 @@ def three_stitching(data_path, store_path, top_num, refine_flag=False, save_inte
         tier_mask_list = tier_mask_list[1:]
 
         if save_intermediate:
-            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_row_", str(len(tier_list)), ".bmp"])),
+            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_row_", str(len(tier_list)), file_ext])),
                         np.uint8(stitching_res))
-            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_row_", str(len(tier_list)), "_mask", ".bmp"])), np.uint8(mass * 255))
+            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_row_", str(len(tier_list)), "_mask", file_ext])), np.uint8(mass * 255))
 
     final_res = tier_list[0]
     final_res = np.uint8(final_res)
-    cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", ".bmp"])), final_res)
+    cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", file_ext])), final_res)
     return
 
 

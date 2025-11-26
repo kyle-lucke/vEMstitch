@@ -26,21 +26,23 @@ for root, dirs, files in os.walk(data_path):
 image_list = list(set(image_list))
 image_list.sort()
 
+file_ext = '.tif'
+
 if not os.path.exists(store_path):
     os.mkdir(store_path)
 
 for top_num in tqdm(image_list):
     if pattern == 3:
-        try:
-            three_stitching(data_path, store_path, top_num, refine_flag=refine_flag)
-        except Exception:
-            final_res = np.zeros((1000, 1000))
-            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", ".bmp"])), final_res)
+        # try:
+            three_stitching(data_path, store_path, top_num, file_ext, refine_flag=refine_flag)
+        # except Exception:
+        #     final_res = np.zeros((1000, 1000))
+        #     cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", file_ext])), final_res)
     elif pattern == 2:
         try:
-            two_stitching(data_path, store_path, top_num, refine_flag=refine_flag)
+            two_stitching(data_path, store_path, top_num, file_ext, refine_flag=refine_flag)
         except Exception:
             final_res = np.zeros((1000, 1000))
-            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", ".bmp"])), final_res)
+            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", file_ext])), final_res)
 
 

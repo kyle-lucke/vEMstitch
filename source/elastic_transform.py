@@ -7,7 +7,7 @@ from Utils import stitch_add_mask_linear_border, normalize_img, stitch_add_mask_
 from matplotlib import pyplot as plt
 
 
-def local_TPS(im1, im2, H, X1_ok, X2_ok, im1_mask=None, im2_mask=None, mode=None):
+def local_TPS(im1, im2, im1_color, im2_color, H, X1_ok, X2_ok, im1_mask=None, im2_mask=None, mode=None):
     if im1_mask is None:
         im1_mask = np.ones((im1.shape[0], im1.shape[1]))
     if im2_mask is None:
@@ -121,6 +121,7 @@ def local_TPS(im1, im2, H, X1_ok, X2_ok, im1_mask=None, im2_mask=None, mode=None
     for kiter in range(10):
         if sum(outlier) < 0.0027 * n:
             break
+        
         ok = ~outlier
         inlier_idx = inlier_idx[ok]
         K_ = K_[np.concatenate((ok, [True, True, True])), :][:, np.concatenate((ok, [True, True, True]))]
@@ -132,6 +133,7 @@ def local_TPS(im1, im2, H, X1_ok, X2_ok, im1_mask=None, im2_mask=None, mode=None
         a = W_[n:n + 3, 0]
         b = W_[n:n + 3, 1]
         outlier = (abs(wx) > 3 * np.std(wx)) | (abs(wy) > 3 * np.std(wy))
+        
     ok = np.full(len(x1), False)
     ok[inlier_idx] = True
     x1 = x1[ok]
@@ -148,10 +150,21 @@ def local_TPS(im1, im2, H, X1_ok, X2_ok, im1_mask=None, im2_mask=None, mode=None
     hy = np.zeros((mosaich, mosaicw))
     u, v = np.meshgrid(ur, vr)
 
+    print("IM1:", im1.shape, v.shape, u.shape)
 
     im1_p = map_coordinates(im1, [v, u])
     warped_mask1 = map_coordinates(im1_mask, [v, u])
+    
+    channels = []
+    for i in range(im1_color.shape[2]):
+        channel_data = im1_color[:, :, i]
+        
+        channel_data_p = map_coordinates(channel_data, [v, u])
 
+        channels.append(channel_data_p)
+
+    im1_color_p = np.stack(channels, axis=-1)
+        
     z_ = H[2, 0] * u + H[2, 1] * v + H[2, 2]
     u_ = (H[0, 0] * u + H[0, 1] * v + H[0, 2]) / z_
     v_ = (H[1, 0] * u + H[1, 1] * v + H[1, 2]) / z_
@@ -194,6 +207,16 @@ def local_TPS(im1, im2, H, X1_ok, X2_ok, im1_mask=None, im2_mask=None, mode=None
     im2_p = map_coordinates(im2, [v_, u_])
     warped_mask2 = map_coordinates(im2_mask, [v_, u_])
 
+    channels = []
+    for i in range(im2_color.shape[2]):
+        channel_data = im2_color[:, :, i]
+        
+        channel_data_p = map_coordinates(channel_data, [v_, u_])
+
+        channels.append(channel_data_p)
+
+    im2_color_p = np.stack(channels, axis=-1)
+    
     warped_mask1 = np.where(warped_mask1 > 0.8, 1.0, 0)
     warped_mask2 = np.where(warped_mask2 > 0.8, 1.0, 0)
 
@@ -205,4 +228,18 @@ def local_TPS(im1, im2, H, X1_ok, X2_ok, im1_mask=None, im2_mask=None, mode=None
                                                                                         mode=mode)
     stitching_res = im1_p * warped_mask1 + im2_p * warped_mask2
 
+    stitching_res_color = im1_color_p * warped_mask1[:, :, np.newaxis] + im2_color_p * warped_mask2[:, :, np.newaxis]
+    
+    
+    fig, axs = plt.subplots(nrows=2, ncols=1)
+
+    for ax in axs.flat:
+        ax.axis('off')
+    
+    axs[0].imshow(stitching_res)
+    axs[1].imshow(stitching_res_color.astype(np.uint8))
+    plt.show()
+    exit()
+
+    
     return stitching_res, [v, u], [v_, u_], mass, overelap_mass
