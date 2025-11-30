@@ -1,4 +1,4 @@
-from stitching import three_stitching, two_stitching
+from stitching import three_stitching # two_stitching
 import os
 from tqdm import tqdm
 import numpy as np
@@ -10,6 +10,7 @@ parser.add_argument('--input_path', type=str, default="", help='input file path'
 parser.add_argument('--store_path', type=str, default="", help='store res path')
 parser.add_argument('--pattern', type=int, default=3, help='two or three')
 parser.add_argument('--refine', action='store_true', default=False, help='refine or not')
+parser.add_argument('--file-ext', default='.tif', choices=['.tif', '.bmp', '.png'])
 
 args = parser.parse_args()
 pattern = args.pattern
@@ -17,6 +18,7 @@ refine_flag = args.refine
 
 data_path = args.input_path
 store_path = args.store_path
+file_ext = args.file_ext
 
 image_list = []
 for root, dirs, files in os.walk(data_path):
@@ -26,7 +28,7 @@ for root, dirs, files in os.walk(data_path):
 image_list = list(set(image_list))
 image_list.sort()
 
-file_ext = '.tif'
+# file_ext = '.tif'
 
 if not os.path.exists(store_path):
     os.mkdir(store_path)

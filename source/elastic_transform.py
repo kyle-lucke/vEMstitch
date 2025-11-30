@@ -236,10 +236,9 @@ def local_TPS(im1, im2, im1_color, im2_color, H, X1_ok, X2_ok, im1_mask=None, im
     for ax in axs.flat:
         ax.axis('off')
     
-    axs[0].imshow(stitching_res)
-    axs[1].imshow(stitching_res_color.astype(np.uint8))
-    plt.show()
-    exit()
-
+    # axs[0].imshow(stitching_res)
+    # axs[1].imshow(stitching_res_color.astype(np.uint8))
+    # plt.show()
+    # exit()
     
-    return stitching_res, [v, u], [v_, u_], mass, overelap_mass
+    return stitching_res, stitching_res_color, [v, u], [v_, u_], mass, overelap_mass
