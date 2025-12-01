@@ -184,19 +184,11 @@ def three_stitching(data_path, store_path, top_num, file_ext, output_file_ext, r
         tier_list_color = tier_list_color[1:]
         
     final_res = tier_list[0]
-
-    print(final_res.shape, final_res.min(), final_res.max())
     
     final_res = np.uint8(final_res)
 
     final_res_color = tier_list_color[0]
     
-    # # clip before casting to uint8
-    # final_res_color = np.clip(final_res_color, 0.0, 255.0)
-
-    # # convert to uint8, then RGB -> BGR for openCV saving
-    # final_res_color = cv2.cvtColor(final_res_color.astype(np.uint8), cv2.COLOR_RGB2BGR)
-
     final_res_color = post_process(final_res_color)
     
     print(f"shape: {final_res_color.shape}, min/max: {final_res_color.min()}/{final_res_color.max()}")
@@ -215,7 +207,6 @@ def n_stitching(tile_grid, refine_flag=False):
 
     # step 1) stitch together the images in each row across all columns
     for r in range(tile_grid.n_rows):
-        # might be able to use joblib to parallelize this inner loop:
         for c in range(tile_grid.n_cols-1):
 
             if c == 0:
@@ -257,8 +248,6 @@ def n_stitching(tile_grid, refine_flag=False):
             else:
                 stitching_res, mass = stitching_res_temp, mass_temp
                 stitching_res = np.uint8(stitching_res)
-
-            exit()
                
         # append stitching result from this row, over all columns
         tier_list.append(stitching_res)
@@ -297,9 +286,7 @@ def n_stitching(tile_grid, refine_flag=False):
         tier_list_color = tier_list_color[1:]
 
     final_res_color = post_process(tier_list_color[0])
-    
-    print(f"shape: {final_res_color.shape}, min/max: {final_res_color.min()}/{final_res_color.max()}")
-    
+        
     return final_res_color
 
 
@@ -359,7 +346,7 @@ def n_stitching_parallel(tile_grid, n_jobs, refine_flag=False):
     tier_list_color = []
 
     # step 1) stitch together the images in each row across all columns
-    row_results = Parallel(n_jobs=4, verbose=10)(
+    row_results = Parallel(n_jobs=n_jobs, verbose=10)(
         delayed(stitch_columns_for_row)(
             r, tile_grid, refine_flag
         ) for r in range(tile_grid.n_rows) 
@@ -369,70 +356,11 @@ def n_stitching_parallel(tile_grid, n_jobs, refine_flag=False):
     tier_mask_list = []
     tier_list_color = []
 
+    # Put stitched rows into correct order for further stitching
     for res in sorted(row_results, key=lambda x: x['r']):
-        print(res['r'])
-
         tier_list.append(res['stitching_res'])
         tier_mask_list.append(res['mass'])
         tier_list_color.append(res['stitching_res_color'])
-
-    # for r in range(tile_grid.n_rows):        
-    #     # might be able to use joblib to parallelize this inner loop:
-    #     for c in range(tile_grid.n_cols-1):
-
-    #         if c == 0:
-        
-    #             img_1 = tile_grid.get_tile(r, c)
-    #             img_2 = tile_grid.get_tile(r, c+1)
-        
-    #             img1_color = tile_grid.get_tile(r, c, grayscale=False)
-    #             img2_color = tile_grid.get_tile(r, c+1, grayscale=False)
-
-    #         else:
-
-    #             img_1 = stitching_res
-    #             img_2 = tile_grid.get_tile(r, c+1)
-
-    #             img1_color = stitching_res_color
-    #             img2_color = tile_grid.get_tile(r, c+1, grayscale=False)
-        
-    #         mode = "r"
-
-    #         if c == 0:
-            
-    #             stitching_res_temp, mass_temp, process_flag = preprocess(img_1, img_2, None, None, mode)
-
-    #         else:
-    #             stitching_res_temp, mass_temp, process_flag = preprocess(img_1, img_2, mass, None, mode)
-                
-    #         if process_flag:
-
-    #             if c == 0:
-    #                 img_1_mask = np.ones(img_1.shape)
-    #             else:
-    #                 img_1_mask = mass
-                    
-    #             img_2_mask = np.ones(img_2.shape)
-    #             stitching_res, stitching_res_color, mass, _ = stitching_pair(img_1, img_2, img1_color, img2_color, img_1_mask, img_2_mask, mode)
-    #             stitching_res = np.uint8(stitching_res)
-                
-    #         else:
-    #             stitching_res, mass = stitching_res_temp, mass_temp
-    #             stitching_res = np.uint8(stitching_res)
-    
-    #     # append stitching result from this row, over all columns
-    #     tier_list.append(stitching_res)
-    #     tier_mask_list.append(mass)
-    #     tier_list_color.append(stitching_res_color)
-
-    #     ### DEBUG ###
-    #     # import matplotlib.pyplot as plt
-    #     # plt.axis('off')
-    #     # plt.imshow(post_process(stitching_res_color, cvt_color=False))
-    #     # plt.tight_layout()
-    #     # plt.show()
-    #     # exit()
-    #     ############
 
     # stitch together image rows:
     while len(tier_list) >= 2:
@@ -458,8 +386,5 @@ def n_stitching_parallel(tile_grid, n_jobs, refine_flag=False):
 
     final_res_color = post_process(tier_list_color[0])
     
-    print(f"shape: {final_res_color.shape}, min/max: {final_res_color.min()}/{final_res_color.max()}")
-    
     return final_res_color
-
 
