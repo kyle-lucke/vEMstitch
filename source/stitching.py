@@ -40,7 +40,6 @@ def stitching_rows(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, ref
                                                             mode)
     return stitching_res, stitching_res_color, mass, overlap_mass
 
-
 def preprocess(im1, im2, im1_mask, im2_mask, mode):
     if mode == "r":
         half_w = int(im2.shape[1] // 2)
@@ -64,50 +63,6 @@ def preprocess(im1, im2, im1_mask, im2_mask, mode):
         return True, True, True
 
 
-# def two_stitching(data_path, store_path, top_num, file_ext, refine_flag=False):
-#     tier_list = []
-#     tier_mask_list = []
-#     for i in range(2):
-#         img_1 = cv2.imread(os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_1", file_ext])))
-#         img_2 = cv2.imread(os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_2", file_ext])))
-
-#         if img_1 is not None and img_2 is not None:
-#             img_1 = cv2.cvtColor(img_1, cv2.COLOR_BGR2GRAY)
-#             img_2 = cv2.cvtColor(img_2, cv2.COLOR_BGR2GRAY)
-
-#             mode = "r"
-#             stitching_res_temp, mass_temp, process_flag = preprocess(img_1, img_2, None, None, mode)
-#             if process_flag:
-#                 img_1_mask = np.ones(img_1.shape)
-#                 img_2_mask = np.ones(img_2.shape)
-#                 stitching_res, stitching_res_color, mass, _ = stitching_pair(img_1, img_2, img_1_mask, img_2_mask, mode)
-#                 stitching_res = np.uint8(stitching_res)
-#             else:
-#                 stitching_res, mass = stitching_res_temp, mass_temp
-#                 stitching_res = np.uint8(stitching_res)
-#         elif img_1 is None:
-#             img_2 = cv2.cvtColor(img_2, cv2.COLOR_BGR2GRAY)
-#             stitching_res = img_2
-#             mass = np.ones(img_2.shape)
-#         else:
-#             img_1 = cv2.cvtColor(img_1, cv2.COLOR_BGR2GRAY)
-#             stitching_res = img_1
-#             mass = np.ones(img_1.shape)
-
-#         tier_list.append(stitching_res)
-#         tier_mask_list.append(mass)
-
-#     im1 = tier_list[0]
-#     im2 = tier_list[1]
-#     im1_mask = tier_mask_list[0]
-#     im2_mask = tier_mask_list[1]
-#     mode = "d"
-#     stitching_res, _, _ = stitching_rows(im1, im2, im1_mask, im2_mask, mode, refine_flag)
-
-#     final_res = np.uint8(stitching_res)
-#     cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", file_ext])), final_res)
-#     return
-
 def read_image(fname, grayscale=True):
     image = cv2.cvtColor(cv2.imread(fname), cv2.COLOR_BGR2RGB)
 
@@ -116,16 +71,25 @@ def read_image(fname, grayscale=True):
 
     return image
 
+def post_process(image, cvt_color=True):
+    # clip before casting to uint8
+    image = np.clip(image, 0.0, 255.0).astype(np.uint8)
+
+    if cvt_color:    
+        # convert to uint8, then RGB -> BGR for openCV saving
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+    return image
 
 # Algorithm:
 # 1) stitch together the 3 images in each row, this is what the "for i in range(3)" loop does
 # 2) stitch together each image row
-def three_stitching(data_path, store_path, top_num, file_ext, output_file_ext, refine_flag=False,
-                    save_intermediate=False):
-    
+def three_stitching(data_path, store_path, top_num, file_ext, output_file_ext, refine_flag=False):
+
     tier_list = []
     tier_mask_list = []
     tier_list_color = []
+    # for i in range(num_cols):
     for i in range(3):
         # img_1 = cv2.imread(os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_1", ".bmp"])))
         # img_2 = cv2.imread(os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_2", ".bmp"])))
@@ -157,18 +121,12 @@ def three_stitching(data_path, store_path, top_num, file_ext, output_file_ext, r
                 stitching_res = np.uint8(stitching_res)
                 
         elif img_1 is None:
-            # img_2 = cv2.cvtColor(img_2, cv2.COLOR_BGR2GRAY)
             stitching_res = img_2
             mass = np.ones(img_2.shape)
             
         else:
-            # img_1 = cv2.cvtColor(img_1, cv2.COLOR_BGR2GRAY)
             stitching_res = img_1
             mass = np.ones(img_1.shape)
-
-        # if save_intermediate:
-        #     cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_"+str(i+1), "_1+2", file_ext])), np.uint8(stitching_res))
-        #     cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_"+str(i+1), "_1+2_mask", file_ext])), np.uint8(mass * 255))
 
         img_3_pth = os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_3", file_ext]))
         img_3 = read_image(img_3_pth)
@@ -178,7 +136,7 @@ def three_stitching(data_path, store_path, top_num, file_ext, output_file_ext, r
             tier_mask_list.append(mass)
             tier_list_color.append(stitching_res_color)
             continue
-        # img_3 = cv2.cvtColor(img_3, cv2.COLOR_BGR2GRAY)
+
         img_3_mask = np.ones(img_3.shape)
         mode = "r"
         stitching_res_temp, mass_temp, process_flag = preprocess(stitching_res, img_3, mass, None, mode)
@@ -194,11 +152,15 @@ def three_stitching(data_path, store_path, top_num, file_ext, output_file_ext, r
         tier_mask_list.append(mass)
         tier_list_color.append(stitching_res_color)
 
-        # if save_intermediate:
-        #     cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_" + str(i + 1), "_1+2+3", file_ext])), np.uint8(stitching_res))
-        #     cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_" + str(i + 1), "_1+2+3_mask", file_ext])), np.uint8(mass * 255))
-
-
+        ### DEBUG ###
+        import matplotlib.pyplot as plt
+        plt.axis('off')
+        plt.imshow(post_process(stitching_res_color, cvt_color=False))
+        plt.tight_layout()
+        plt.show()
+        # exit()
+        ############
+        
     while len(tier_list) >= 2:
         im1 = tier_list[0]
         im2 = tier_list[1]
@@ -220,20 +182,125 @@ def three_stitching(data_path, store_path, top_num, file_ext, output_file_ext, r
         tier_mask_list = tier_mask_list[1:]
         tier_list_color = tier_list_color[1:]
         
-        # if save_intermediate:
-        #     cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_row_", str(len(tier_list)), file_ext])),
-        #                 np.uint8(stitching_res))
-        #     cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "_row_", str(len(tier_list)), "_mask", file_ext])), np.uint8(mass * 255))
-
     final_res = tier_list[0]
 
     print(final_res.shape, final_res.min(), final_res.max())
     
     final_res = np.uint8(final_res)
 
-    final_res_color = cv2.cvtColor(tier_list_color[0].astype(np.uint8), cv2.COLOR_RGB2BGR)
+    final_res_color = tier_list_color[0]
+    
+    # # clip before casting to uint8
+    # final_res_color = np.clip(final_res_color, 0.0, 255.0)
 
-    print(final_res_color.shape, final_res_color.min(), final_res_color.max())
+    # # convert to uint8, then RGB -> BGR for openCV saving
+    # final_res_color = cv2.cvtColor(final_res_color.astype(np.uint8), cv2.COLOR_RGB2BGR)
+
+    final_res_color = post_process(final_res_color)
+    
+    print(f"shape: {final_res_color.shape}, min/max: {final_res_color.min()}/{final_res_color.max()}")
+    
+    cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", output_file_ext])), final_res_color)
+    return
+
+# Algorithm:
+# 1) stitch together the 3 images in each row, this is what the "for i in range(3)" loop does
+# 2) stitch together each image row
+def n_stitching(data_path, store_path, top_num, file_ext, output_file_ext, tile_grid, refine_flag=False):
+    
+    tier_list = []
+    tier_mask_list = []
+    tier_list_color = []
+
+    # step 1) stitch together the images in each row across all columns
+    for r in range(tile_grid.n_rows):
+        for c in range(tile_grid.n_cols-1):
+
+            print(f"stitching ({r}, {c}), ({r}, {c+1})")
+            # continue
+
+            if c == 0:
+        
+                img_1 = tile_grid.get_tile(r, c)
+                img_2 = tile_grid.get_tile(r, c+1)
+        
+                img1_color = tile_grid.get_tile(r, c, grayscale=False)
+                img2_color = tile_grid.get_tile(r, c+1, grayscale=False)
+
+            else:
+
+                img_1 = stitching_res
+                img_2 = tile_grid.get_tile(r, c+1)
+
+                img1_color = stitching_res_color
+                img2_color = tile_grid.get_tile(r, c+1, grayscale=False)
+            
+            print(f"stitching {tile_grid.get_tile_fname(r, c)} and {tile_grid.get_tile_fname(r, c+1)}")
+            print()
+        
+            mode = "r"
+
+            if c == 0:
+            
+                stitching_res_temp, mass_temp, process_flag = preprocess(img_1, img_2, None, None, mode)
+
+            else:
+                stitching_res_temp, mass_temp, process_flag = preprocess(img_1, img_2, mass, None, mode)
+                
+            if process_flag:
+
+                if c == 0:
+                    img_1_mask = np.ones(img_1.shape)
+                else:
+                    img_1_mask = mass
+                    
+                img_2_mask = np.ones(img_2.shape)
+                stitching_res, stitching_res_color, mass, _ = stitching_pair(img_1, img_2, img1_color, img2_color, img_1_mask, img_2_mask, mode)
+                stitching_res = np.uint8(stitching_res)
+                
+            else:
+                stitching_res, mass = stitching_res_temp, mass_temp
+                stitching_res = np.uint8(stitching_res)
+    
+        # append stitching result from this row, over all columns
+        tier_list.append(stitching_res)
+        tier_mask_list.append(mass)
+        tier_list_color.append(stitching_res_color)
+
+        ### DEBUG ###
+        # import matplotlib.pyplot as plt
+        # plt.axis('off')
+        # plt.imshow(post_process(stitching_res_color, cvt_color=False))
+        # plt.tight_layout()
+        # plt.show()
+        # exit()
+        ############
+
+    # stitch together image rows:
+    while len(tier_list) >= 2:
+        im1 = tier_list[0]
+        im2 = tier_list[1]
+        im1_mask = tier_mask_list[0]
+        im2_mask = tier_mask_list[1]
+
+        im1_color = tier_list_color[0]
+        im2_color = tier_list_color[1]
+        
+        mode = "d"
+        stitching_res, stitching_res_color, mass, overlap_mass = stitching_rows(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, refine_flag)
+        stitching_res = np.uint8(stitching_res)
+        
+        tier_list[1] = stitching_res
+        tier_mask_list[1] = mass
+        tier_list_color[1] = stitching_res_color
+        
+        tier_list = tier_list[1:]
+        tier_mask_list = tier_mask_list[1:]
+        tier_list_color = tier_list_color[1:]
+
+    final_res_color = post_process(tier_list_color[0])
+    
+    print(f"shape: {final_res_color.shape}, min/max: {final_res_color.min()}/{final_res_color.max()}")
     
     cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", output_file_ext])), final_res_color)
     return
