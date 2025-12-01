@@ -11,6 +11,7 @@ parser.add_argument('--store_path', type=str, default="", help='store res path')
 parser.add_argument('--pattern', type=int, default=3, help='two or three')
 parser.add_argument('--refine', action='store_true', default=False, help='refine or not')
 parser.add_argument('--file-ext', default='.tif', choices=['.tif', '.bmp', '.png'])
+parser.add_argument('--output-file-ext', default='.png')
 
 args = parser.parse_args()
 pattern = args.pattern
@@ -36,7 +37,7 @@ if not os.path.exists(store_path):
 for top_num in tqdm(image_list):
     if pattern == 3:
         # try:
-            three_stitching(data_path, store_path, top_num, file_ext, refine_flag=refine_flag)
+            three_stitching(data_path, store_path, top_num, file_ext, args.output_file_ext, refine_flag=refine_flag)
         # except Exception:
         #     final_res = np.zeros((1000, 1000))
         #     cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", file_ext])), final_res)
@@ -45,6 +46,5 @@ for top_num in tqdm(image_list):
             two_stitching(data_path, store_path, top_num, file_ext, refine_flag=refine_flag)
         except Exception:
             final_res = np.zeros((1000, 1000))
-            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", file_ext])), final_res)
-
+            cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", args.output_file_ext])), final_res)
 

@@ -120,7 +120,7 @@ def read_image(fname, grayscale=True):
 # Algorithm:
 # 1) stitch together the 3 images in each row, this is what the "for i in range(3)" loop does
 # 2) stitch together each image row
-def three_stitching(data_path, store_path, top_num, file_ext, refine_flag=False,
+def three_stitching(data_path, store_path, top_num, file_ext, output_file_ext, refine_flag=False,
                     save_intermediate=False):
     
     tier_list = []
@@ -231,11 +231,11 @@ def three_stitching(data_path, store_path, top_num, file_ext, refine_flag=False,
     
     final_res = np.uint8(final_res)
 
-    final_res_color = (tier_list_color[0])
+    final_res_color = cv2.cvtColor(tier_list_color[0].astype(np.uint8), cv2.COLOR_RGB2BGR)
 
     print(final_res_color.shape, final_res_color.min(), final_res_color.max())
     
-    cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", file_ext])), final_res_color.astype(np.uint8))
+    cv2.imwrite(os.path.join(store_path, "".join([str(top_num), "-res", output_file_ext])), final_res_color)
     return
 
 
