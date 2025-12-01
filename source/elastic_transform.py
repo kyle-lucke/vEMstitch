@@ -30,7 +30,9 @@ def local_TPS(im1, im2, im1_color, im2_color, H, X1_ok, X2_ok, im1_mask=None, im
     box2 = np.array([[0, im2.shape[1] - 1, im2.shape[1] - 1, 0],
                      [0, 0, im2.shape[0] - 1, im2.shape[0] - 1],
                      [1, 1, 1, 1]])
+
     box2_ = linalg.solve(H, box2)
+    
     box2_[0, :] = box2_[0, :] / box2_[2, :]
     box2_[1, :] = box2_[1, :] / box2_[2, :]
     u0 = min(0, min(box2_[0, :]))
@@ -107,8 +109,13 @@ def local_TPS(im1, im2, im1_color, im2_color, H, X1_ok, X2_ok, im1_mask=None, im
     G_[0:n, 0] = gxn
     G_[0:n, 1] = hyn
 
+    # apply Tikhonov regularization to improve conditioning
+    c = 1e-4
+    K_ += c*np.eye(K_.shape[0], M=K_.shape[1])
+
     # solve the linear system
     W_ = linalg.solve(K_, G_)
+    
     wx = W_[0:n, 0]
     wy = W_[0:n, 1]
     a = W_[n:n + 3, 0]
@@ -126,7 +133,9 @@ def local_TPS(im1, im2, im1_color, im2_color, H, X1_ok, X2_ok, im1_mask=None, im
         inlier_idx = inlier_idx[ok]
         K_ = K_[np.concatenate((ok, [True, True, True])), :][:, np.concatenate((ok, [True, True, True]))]
         G_ = G_[np.concatenate((ok, [True, True, True])), :]
+
         W_ = linalg.solve(K_, G_)
+        
         n = len(inlier_idx)
         wx = W_[0:n, 0]
         wy = W_[0:n, 1]
@@ -149,8 +158,6 @@ def local_TPS(im1, im2, im1_color, im2_color, H, X1_ok, X2_ok, im1_mask=None, im
     gx = np.zeros((mosaich, mosaicw))
     hy = np.zeros((mosaich, mosaicw))
     u, v = np.meshgrid(ur, vr)
-
-    print("IM1:", im1.shape, v.shape, u.shape)
 
     im1_p = map_coordinates(im1, [v, u])
     warped_mask1 = map_coordinates(im1_mask, [v, u])
