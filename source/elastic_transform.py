@@ -231,10 +231,10 @@ def local_TPS(im1, im2, im1_color, im2_color, H, X1_ok, X2_ok, im1_mask=None, im
     stitching_res_color = im1_color_p * warped_mask1[:, :, np.newaxis] + im2_color_p * warped_mask2[:, :, np.newaxis]
     
     
-    fig, axs = plt.subplots(nrows=2, ncols=1)
+    # fig, axs = plt.subplots(nrows=2, ncols=1)
 
-    for ax in axs.flat:
-        ax.axis('off')
+    # for ax in axs.flat:
+    #     ax.axis('off')
     
     # axs[0].imshow(stitching_res)
     # axs[1].imshow(stitching_res_color.astype(np.uint8))
