@@ -172,13 +172,13 @@ def fast_brief(im1, im2, im1_mask, im2_mask, X1, X2, height, im1_region, im2_reg
     return H, ok, X1, X2
 
 
-def refinement_local(im1, im2, H, X1, X2, ok, im1_mask, im2_mask, mode):
+def refinement_local(im1, im2, im1_color, im2_color, H, X1, X2, ok, im1_mask, im2_mask, mode):
     im_mask_overlap = find_overlap(im1_mask, im2_mask, H)
     height, im1_region, im2_region = find_region(im1, im2, X1, X2, ok, im_mask_overlap)
     if height is None:
-        return None, None, None
+        return None, None, None, None
     H, ok, X1, X2 = fast_brief(im1, im2, im1_mask, im2_mask, X1, X2, height, im1_region, im2_region, mode)
-    stitching_res, _, _, mass, overlap_mass = local_TPS(im1, im2, H, X1.T[:, ok], X2.T[:, ok], im1_mask, im2_mask, mode)
-    return stitching_res, mass, overlap_mass
+    stitching_res, stitching_res_color, _, _, mass, overlap_mass = local_TPS(im1, im2, im1_color, im2_color, H, X1.T[:, ok], X2.T[:, ok], im1_mask, im2_mask, mode)
+    return stitching_res, stitching_res_color, mass, overlap_mass
 
 
