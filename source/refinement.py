@@ -88,8 +88,10 @@ def find_region(im1, im2, X1, X2, ok, im_mask_overlap):
 
 
 def fast_brief(im1, im2, im1_mask, im2_mask, X1, X2, height, im1_region, im2_region, mode):
+
     mask_1 = np.zeros(im1.shape)
     mask_2 = np.zeros(im2.shape)
+
     if height is not None:
         if mode == "d":
             mask_1[-height:, im1_region[0]: im1_region[1]] = 1.0
@@ -121,15 +123,18 @@ def fast_brief(im1, im2, im1_mask, im2_mask, X1, X2, height, im1_region, im2_reg
     orb = cv2.ORB_create()
     kp1, dsp1 = orb.compute(im1, kp1)
     kp2, dsp2 = orb.compute(im2, kp2)
+
     FLANN_INDEX_LSH = 6
     index_params = dict(algorithm=FLANN_INDEX_LSH,
                         table_number=12,  # 12
                         key_size=20,  # 20
                         multi_probe_level=2)  # 2
     search_params = dict(checks=50)
+
     flann = cv2.FlannBasedMatcher(index_params, search_params)
     matches = flann.knnMatch(dsp1, dsp2, k=2)
     good = []
+
     ratio = 0.6
     for k in matches:
         if len(k) == 2:
@@ -145,6 +150,7 @@ def fast_brief(im1, im2, im1_mask, im2_mask, X1, X2, height, im1_region, im2_reg
     elif mode == "l" or "r":
         dis = im1_mask.shape[1]
     shifting = (mode, dis)
+
     edge_ok = filter_geometry(srcdsp, tgtdsp, index_flag=True, shifting=shifting)
 
     X1 = np.vstack([X1, srcdsp[edge_ok, :]]) if X1 is not None else srcdsp[edge_ok, :]
