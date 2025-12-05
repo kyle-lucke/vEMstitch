@@ -1,11 +1,13 @@
 import cv2
 import numpy as np
-from Utils import unique
 from scipy import linalg
 from scipy.ndimage import map_coordinates
-from Utils import stitch_add_mask_linear_border, normalize_img, stitch_add_mask_linear_per_border
 from matplotlib import pyplot as plt
 
+from .Utils import unique
+from .Utils import stitch_add_mask_linear_border, normalize_img, stitch_add_mask_linear_per_border
+
+EPS = 1e-12
 
 def local_TPS(im1, im2, im1_color, im2_color, H, X1_ok, X2_ok, im1_mask=None, im2_mask=None, mode=None):
     if im1_mask is None:
@@ -181,6 +183,10 @@ def local_TPS(im1, im2, im1_color, im2_color, H, X1_ok, X2_ok, im1_mask=None, im
     hy_sub = np.zeros((int(np.ceil(imh_ / intv_mesh)), int(np.ceil(imw_ / intv_mesh))))
     for kf in range(n):
         dist2 = (u_im_ - x1_[kf]) ** 2 + (v_im_ - y1_[kf]) ** 2
+
+        # clip zeros to small value so log is numerically stable:
+        dist2 = np.clip(dist2, EPS, None)
+        
         rbf = 0.5 * dist2 * np.log(dist2)
         gx_sub = gx_sub + wx[kf] * rbf
         hy_sub = hy_sub + wy[kf] * rbf
