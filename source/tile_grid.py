@@ -35,3 +35,26 @@ class TileGridFromDataFrame:
       str_rep += self.df.to_string(header=False, index=False)
 
       return str_rep
+
+  # debugging function
+    def plot_grid(self, color=False, save_fname=''):
+        import matplotlib.pyplot as plt
+
+        fig, axs = plt.subplots(nrows=self.n_rows, ncols=self.n_cols)
+
+        for ax in axs.flat:
+            ax.axis('off')
+
+        cmap = None if color else 'gray'
+            
+        for r in range(self.n_rows):
+            for c in range(self.n_cols):
+                axs[r][c].imshow(self.get_tile(r, c, grayscale=not color), cmap=cmap)
+
+        plt.tight_layout()
+
+        if save_fname:
+            plt.savefig(save_fname, dpi=1200, bbox_inches='tight', pad_inches=0.05)
+            plt.close()
+        else:
+            plt.show()
