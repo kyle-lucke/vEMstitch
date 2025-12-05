@@ -1,13 +1,15 @@
+import os
+from collections import defaultdict
+
 import cv2
 import numpy as np
-from Utils import loG, filter_geometry, SIFT, normalize_img, draw_matches
-from collections import defaultdict
-from rigid_transform import RANSAC
-from elastic_transform import local_TPS
-import os
-from rigid_transform import rigid_transform
 from scipy import linalg
 from scipy.ndimage import map_coordinates
+
+from .rigid_transform import RANSAC
+from .elastic_transform import local_TPS
+from .rigid_transform import rigid_transform
+from .Utils import loG, filter_geometry, SIFT, normalize_img, draw_matches
 
 
 def find_overlap(im1_mask, im2_mask, H):

@@ -4,10 +4,10 @@ from joblib import Parallel, delayed
 import cv2
 import numpy as np
 
-from Utils import SIFT, direct_stitch
-from elastic_transform import local_TPS
-from rigid_transform import rigid_transform
-from refinement import refinement_local, fast_brief
+from .Utils import SIFT, direct_stitch
+from .elastic_transform import local_TPS
+from .rigid_transform import rigid_transform
+from .refinement import refinement_local, fast_brief
 
 def stitching_pair(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, overlap=0.15):
     kp1, dsp1, kp2, dsp2 = SIFT(im1, im2)
