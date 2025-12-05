@@ -1,7 +1,10 @@
+import logging 
 import numpy as np
 import cv2
 from collections import defaultdict
 import os
+
+logger = logging.getLogger(__name__)
 
 def generate_None_list(m, n):
     a = []
@@ -160,44 +163,71 @@ def rigidity_cons(x, y, x_, y_):
             break
     return flag
 
+def SIFT(im1, im2, im1_mask=None, im2_mask=None, median_filtering=False, ksize=5):
 
-def SIFT(im1, im2):
+    if median_filtering:
+        im1 = cv2.medianBlur(im1, ksize)
+        im2 = cv2.medianBlur(im2, ksize)
+    
     sift = cv2.SIFT_create()
-    kp1, dsp1 = sift.detectAndCompute(im1, None)  # None --> mask
-    kp2, dsp2 = sift.detectAndCompute(im2, None)
+
+    kp1, dsp1 = sift.detectAndCompute(im1, im1_mask)  # None --> mask
+    kp2, dsp2 = sift.detectAndCompute(im2, im2_mask)
+    
     return kp1, dsp1, kp2, dsp2
 
-
-def flann_match(kp1, dsp1, kp2, dsp2, ratio=0.4, im1_mask=None, im2_mask=None, shifting=None):
+def flann_match(kp1, dsp1, kp2, dsp2, ratio=0.4, im1_mask=None, im2_mask=None, shifting=None, **kwargs):
     """
     return DMatch (queryIdx, trainIdx, distance)
     queryIdx: index of query keypoint
     trainIdx: index of target keypoint
     distance: Euclidean distance
     """
+    
     FLANN_INDEX_KDTREE = 1
     index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
     search_params = dict(checks=50)
+
     flann = cv2.FlannBasedMatcher(index_params, search_params)
     matches = flann.knnMatch(dsp1, dsp2, k=2)
+
     good = []
-    for m, n in matches:
+    good_matches = [[0, 0] for i in range(len(matches))]
+
+    logger.info(f"Overall matches: {len(matches)}")
+    for i, (m, n) in enumerate(matches):
         if m.distance < ratio * n.distance:
-            # good.append([m.queryIdx, m.trainIdx])
             if im1_mask is not None and im2_mask is not None:
                 im1_x, im1_y = np.int32(np.round(kp1[m.queryIdx].pt))
                 im2_x, im2_y = np.int32(np.round(kp2[m.trainIdx].pt))
                 if im1_mask[im1_y][im1_x] and im2_mask[im2_y][im2_x]:
                     good.append([m.queryIdx, m.trainIdx])
+                    good_matches[i] = [1, 0]
             else:
                 good.append([m.queryIdx, m.trainIdx])
+                good_matches[i] = [1, 0]    
 
     srcdsp = np.float32([kp1[m[0]].pt for m in good])
     tgtdsp = np.float32([kp2[m[1]].pt for m in good])
 
+    logger.info(f"Matches after ratio test: {len(good)}")
+
+    # DEBUG
+    if 'plot_kp_matches' in kwargs['kwargs'] and kwargs['kwargs']['plot_kp_matches']:
+        im1, im2 = kwargs['kwargs']['im1'], kwargs['kwargs']['im2']
+        matched_im = cv2.drawMatchesKnn(im1, kp1, im2, kp2, matches,
+                                        outImg=None, matchesMask=good_matches,
+                                        matchColor=(0,255,0),
+                                        singlePointColor=(0,255,255),
+                                        flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS)
+
+        import matplotlib.pyplot as plt
+        plt.imshow(matched_im, cmap='gray')
+        plt.show()
+
     kp_length = len(srcdsp)
     if kp_length <= 2:
-        print("feature number = %d" % len(srcdsp))
+        logger("feature number = %d" % len(srcdsp))
         if len(srcdsp) == 1:
             return [], []
         return srcdsp, tgtdsp
@@ -209,8 +239,11 @@ def flann_match(kp1, dsp1, kp2, dsp2, ratio=0.4, im1_mask=None, im2_mask=None, s
     if len(srcdsp) >= 8:
         srcdsp, tgtdsp = filter_isolate(srcdsp, tgtdsp)
         tgtdsp, srcdsp = filter_isolate(tgtdsp, srcdsp)
+        logger.info(f"matches after filter_isolate: {len(srcdsp)}")
 
     srcdsp, tgtdsp = filter_geometry(srcdsp, tgtdsp, shifting=shifting)
+    logger.info(f"matches after filter_geometry: {len(srcdsp)}")
+    
     return srcdsp, tgtdsp
 
 
