@@ -1,4 +1,5 @@
 import random
+import logging
 
 import numpy as np
 from scipy import linalg
@@ -29,10 +30,12 @@ def RANSAC(ps1, ps2, iter_num, min_dis):
 
     for it in range(iter_num):
         subset = random.sample(list(range(point_num)), 4)
+
         if not rigidity_cons(x1[subset, :], y1[subset, :], x2[subset, :], y2[subset, :]):
             ok[it] = False
             score[it] = 0
             continue
+
         A[it] = np.vstack([X[subset, :], Y[subset, :]])
         U, S, V = linalg.svd(A[it])
         h = V.T[:, 8]
@@ -44,7 +47,7 @@ def RANSAC(ps1, ps2, iter_num, min_dis):
     score, best = max(score), np.argmax(score)
     ok = ok[best]
     A = np.vstack([X[ok, :], Y[ok, :]])
-    U, S, V = linalg.svd(A, 0)
+    U, S, V = linalg.svd(A, 0)    
     h = V.T[:, 8]
     H = h.reshape(3, 3)
     H = np.dot(np.dot(np.array([[1/scale, 0, 0], [0, 1/scale, 0], [0, 0, 1]]), H),
@@ -52,21 +55,26 @@ def RANSAC(ps1, ps2, iter_num, min_dis):
     return H, ok
 
 
-def rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode):
+def rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_ratio=0.4, **kwargs):
     dis = 0.0
     if mode == "d":
         dis = im1_mask.shape[0]
     elif mode == "l" or "r":
         dis = im1_mask.shape[1]
     shifting = (mode, dis)
-    X1, X2 = flann_match(kp1, dsp1, kp2, dsp2, ratio=0.4, im1_mask=im1_mask, im2_mask=im2_mask, shifting=shifting)
+    
+    X1, X2 = flann_match(kp1, dsp1, kp2, dsp2, ratio=flann_ratio, im1_mask=im1_mask, im2_mask=im2_mask, shifting=shifting, **kwargs)
     if len(X1) == 0:
+        logger.info("len(X1) == 0. Falling back to fast_brief routine.")
         return None, None, None, None
+
     try:
         H, ok = RANSAC(X1.copy(), X2.copy(), 2000, 0.1)
-    except Exception:
+    except Exception as e:
+        logger.info(f"exception in RANSAC: {e}.\nFalling back to fast_brief routine.")
         ok = [True for _ in X1]
         return None, None, None, None
+
     point_num = X1.shape[0]
     centroid_1 = np.mean(X1, axis=0)
     centroid_2 = np.mean(X2, axis=0)
