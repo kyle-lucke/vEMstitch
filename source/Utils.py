@@ -163,12 +163,29 @@ def rigidity_cons(x, y, x_, y_):
             break
     return flag
 
-def SIFT(im1, im2, im1_mask=None, im2_mask=None, median_filtering=False, ksize=5):
+def SIFT(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ksize=5):
 
-    if median_filtering:
-        im1 = cv2.medianBlur(im1, ksize)
-        im2 = cv2.medianBlur(im2, ksize)
-    
+    if filtering == 'sharpen':
+        # Create the sharpening kernel
+        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+
+        # Sharpen the image
+        im1 = cv2.filter2D(im1, -1, kernel)
+        im2 = cv2.filter2D(im2, -1, kernel)
+            
+    elif filtering == 'median':
+        im1 = cv2.medianBlur(im1, mb_ksize)
+        im2 = cv2.medianBlur(im2, mb_ksize)
+
+    elif filtering == 'add_weighted':
+
+        im1_gb = cv2.GaussianBlur(im1, (3,3),0)
+        im2_gb = cv2.GaussianBlur(im2, (3,3),0)
+
+        im1 = cv2.addWeighted(im1, 1.5, im1_gb, -0.5, 0)
+        im2 = cv2.addWeighted(im2, 1.5, im2_gb, -0.5, 0)
+        
+        
     sift = cv2.SIFT_create()
 
     kp1, dsp1 = sift.detectAndCompute(im1, im1_mask)  # None --> mask
