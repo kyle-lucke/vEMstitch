@@ -19,31 +19,38 @@ def plot_single_image(img, grayscale=True):
 
     plt.axis('off')
     plt.imshow(img, cmap='gray' if grayscale else None)
+
+    mng = plt.get_current_fig_manager()
+    mng.resize(*mng.window.maxsize())
+
+    plt.tight_layout()
     plt.show()
 
-def stitching_pair(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, overlap=0.15, sift_mask_percent=0.1, feature_detector='SIFT'):
+def stitching_pair(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, overlap=0.15, sift_mask_percent=0.2):
 
     # mask everything but RHS edge for im1:
     im1_sift_mask = np.zeros_like(im1, dtype=np.uint8)
     im1_sift_mask_start = im1.shape[1] - int(im1.shape[1] * sift_mask_percent)
-    im1_sift_mask[:, im1_sift_mask_start:] = 255
+    im1_sift_mask[:, im1_sift_mask_start:] = 1
 
     # mask everything but LHS edge for im2:
     im2_sift_mask = np.zeros_like(im2, dtype=np.uint8)
     im2_sift_mask_end = int(im2.shape[1] * sift_mask_percent)
-    im2_sift_mask[:, :im2_sift_mask_end] = 255
+    im2_sift_mask[:, :im2_sift_mask_end] = 1
 
     # plot_single_image(im1 * im1_sift_mask)
     # plot_single_image(im2 * im2_sift_mask)
     # exitt()
     
     kp1, dsp1, kp2, dsp2 = SIFT(im1, im2,
-                                im1_mask=im1_sift_mask, im2_mask=im2_sift_mask,
-                                median_filtering=True)
+                                im1_mask=im1_sift_mask, im2_mask=im2_sift_mask)
         
     im1_shape = im1.shape
     im2_shape = im2.shape
-    H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, kwargs={'im1': im1, 'im2': im2})
+    H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask,
+                                    mode, flann_ratio=0.5,
+                                    kwargs={'im1': im1, 'im2': im2,
+                                            'plot_kp_matches': False})
 
     if H is None:
         X1, X2, height, im1_region, im2_region = None, None, None, None, None
@@ -74,12 +81,12 @@ def stitching_rows(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, ref
     im2_sift_mask_end = int(im2.shape[0] * sift_mask_percent)
     im2_sift_mask[:im2_sift_mask_end] = 1
 
-    plot_single_image(im1 * im1_sift_mask)
-    plot_single_image(im2 * im2_sift_mask)
+    # plot_single_image(im1 * im1_sift_mask)
+    # plot_single_image(im2 * im2_sift_mask)
     # exit()
     
     kp1, dsp1, kp2, dsp2 = SIFT(im1, im2)
-    H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode)
+    H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_ratio=0.5)
     if refine_flag:
         stitching_res, stitching_res_color, mass, overlap_mass = refinement_local(im1, im2, im1_color, im2_color, H, X1, X2, ok, im1_mask, im2_mask, mode)
         if stitching_res is None:
