@@ -188,7 +188,6 @@ def two_stitching(tile_grid, refine_flag=False):
         plt.tight_layout()
         plt.show()
         # exit()
-
         
     im1 = tier_list[0]
     im2 = tier_list[1]
@@ -444,11 +443,11 @@ def stitch_columns_for_row(r, tile_grid, refine_flag):
 
         if c == 0:
             
-            stitching_res_temp, mass_temp, process_flag = preprocess(img_1, img_2, None, None, mode)
+            stitching_res_temp, stitching_res_color_temp, mass_temp, process_flag = preprocess(img_1, img_2, img1_color, img2_color, None, None, mode)
 
         else:
-            stitching_res_temp, mass_temp, process_flag = preprocess(img_1, img_2, mass, None, mode)
-            
+            stitching_res_temp, stitching_res_color_temp, mass_temp, process_flag = preprocess(img_1, img_2, img1_color, img2_color, mass, None, mode)
+
         if process_flag:
 
             if c == 0:
@@ -462,6 +461,7 @@ def stitch_columns_for_row(r, tile_grid, refine_flag):
                 
         else:
             stitching_res, mass = stitching_res_temp, mass_temp
+            stitching_res_color = stitching_res_color_temp
             stitching_res = np.uint8(stitching_res)
             
     return {'r': r,
