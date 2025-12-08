@@ -265,11 +265,11 @@ def three_stitching(tile_grid, refine_flag=False):
         tier_list_color.append(stitching_res_color)
 
         ### DEBUG ###
-        # import matplotlib.pyplot as plt
-        # plt.axis('off')
-        # plt.imshow(post_process(stitching_res_color, cvt_color=False))
-        # plt.tight_layout()
-        # plt.show()
+        import matplotlib.pyplot as plt
+        plt.axis('off')
+        plt.imshow(post_process(stitching_res_color, cvt_color=False))
+        plt.tight_layout()
+        plt.show()
         # exit()
         ############
         
@@ -315,18 +315,12 @@ def n_stitching(tile_grid, refine_flag=False):
     tier_list = []
     tier_mask_list = []
     tier_list_color = []
-
-    logger.info("TILE GRID:")
-    logger.info(tile_grid)
-    print()
-    # tile_grid.plot_grid(color=True)
-    # exit()
     
     # step 1) stitch together the images in each row across all columns
     for r in range(tile_grid.n_rows):
         logger.info(f"Stitching columns for row {r+1} / {tile_grid.n_rows}")
         for c in range(tile_grid.n_cols-1):
-
+            logger.info(f"Stitching column {c+1} / {tile_grid.n_cols}")
             if c == 0:
         
                 img_1 = tile_grid.get_tile(r, c)
@@ -386,10 +380,12 @@ def n_stitching(tile_grid, refine_flag=False):
         tier_list_color.append(stitching_res_color)
 
         ### DEBUG ###
-
         import matplotlib.pyplot as plt
         plt.axis('off')
+        plt.title(f"Stitched (Row {r+1} / {tile_grid.n_rows})")
         plt.imshow(post_process(stitching_res_color, cvt_color=False))
+        mng = plt.get_current_fig_manager()
+        mng.resize(*mng.window.maxsize())
         plt.tight_layout()
         plt.show()
         # exit()
