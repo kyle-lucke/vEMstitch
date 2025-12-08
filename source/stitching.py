@@ -204,27 +204,19 @@ def two_stitching(tile_grid, refine_flag=False):
 # Algorithm:
 # 1) stitch together the 3 images in each row, this is what the "for i in range(3)" loop does
 # 2) stitch together each image row
-def three_stitching(data_path, store_path, top_num, file_ext, output_file_ext, refine_flag=False):
+def three_stitching(tile_grid, refine_flag=False):
 
     tier_list = []
     tier_mask_list = []
     tier_list_color = []
     # for i in range(num_cols):
     for i in range(3):
-        # img_1 = cv2.imread(os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_1", ".bmp"])))
-        # img_2 = cv2.imread(os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_2", ".bmp"])))
-
-        img_1_pth = os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_1", file_ext]))
-        img_2_pth = os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_2", file_ext]))
-
-        img_1 = read_image(img_1_pth)
-        img_2 = read_image(img_2_pth)
-
-        img1_color = read_image(img_1_pth, grayscale=False)
-        img2_color = read_image(img_2_pth, grayscale=False)
+        img_1 = tile_grid.get_tile(i, 0)
+        img_2 = tile_grid.get_tile(i, 1)
         
-        logger.info(f"stitching {img_1_pth} and {img_2_pth}")
-        
+        img1_color = tile_grid.get_tile(i, 0, grayscale=False)
+        img2_color = tile_grid.get_tile(i, 1, grayscale=False)
+                
         if img_1 is not None and img_2 is not None:
 
             mode = "r"
@@ -247,9 +239,10 @@ def three_stitching(data_path, store_path, top_num, file_ext, output_file_ext, r
             stitching_res = img_1
             mass = np.ones(img_1.shape)
 
-        img_3_pth = os.path.join(data_path, "".join([top_num, "_" + str(i + 1), "_3", file_ext]))
-        img_3 = read_image(img_3_pth)
-        img3_color = read_image(img_3_pth, grayscale=False)
+        img_3 = tile_grid.get_tile(i, 2)
+
+        img3_color = tile_grid.get_tile(i, 2, grayscale=False)
+
         if img_3 is None:
             tier_list.append(stitching_res)
             tier_mask_list.append(mass)
