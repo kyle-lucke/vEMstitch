@@ -89,7 +89,7 @@ def stitching_rows(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, ref
                                                             mode)
     return stitching_res, stitching_res_color, mass, overlap_mass
 
-def preprocess(im1, im2, im1_mask, im2_mask, mode):
+def preprocess(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode):
     if mode == "r":
         half_w = int(im2.shape[1] // 2)
         half_h = int(im2.shape[0] // 2)
@@ -99,17 +99,24 @@ def preprocess(im1, im2, im1_mask, im2_mask, mode):
             h = im2_shape[0]
             extra_w = int(im1_shape[1] * 0.9)
             w = im2_shape[1] + extra_w
+            
             stitching_res = np.zeros((h, w))
+            stitching_res_color = np.zeros((h, w, 3))
             mass = np.ones((h, w))
+
             stitching_res[:, -im2_shape[1]:] = im2
             stitching_res[:im1_shape[0], :extra_w] = im1[:, :extra_w]
-            return stitching_res, mass, None
+
+            stitching_res_color[:, -im2_shape[1]:] = im2_color
+            stitching_res_color[:im1_shape[0], :extra_w] = im1_color[:, :extra_w]
+            
+            return stitching_res, stitching_res_color, mass, None
 
         if np.std(im2[:, :half_w]) <= 12.0:
             return direct_stitch(im1, im2, im1_mask, im2_mask)
-        return True, True, True
+        return True, True, True, True
     else:
-        return True, True, True
+        return True, True, True, True
 
 
 def read_image(fname, grayscale=True):
@@ -146,7 +153,7 @@ def two_stitching(tile_grid, refine_flag=False):
         if img_1 is not None and img_2 is not None:
             
             mode = "r"
-            stitching_res_temp, mass_temp, process_flag = preprocess(img_1, img_2, None, None, mode)
+            stitching_res_temp, mass_temp, process_flag = preprocess(img_1, img_2, img1_color, img_color, None, None, mode)
             if process_flag:
                 img_1_mask = np.ones(img_1.shape)
                 img_2_mask = np.ones(img_2.shape)
@@ -340,10 +347,10 @@ def n_stitching(tile_grid, refine_flag=False):
 
             if c == 0:
             
-                stitching_res_temp, mass_temp, process_flag = preprocess(img_1, img_2, None, None, mode)
+                stitching_res_temp, stitching_res_color_temp, mass_temp, process_flag = preprocess(img_1, img_2, img1_color, img2_color, None, None, mode)
 
             else:
-                stitching_res_temp, mass_temp, process_flag = preprocess(img_1, img_2, mass, None, mode)
+                stitching_res_temp, stitching_res_color_temp, mass_temp, process_flag = preprocess(img_1, img_2, img1_color, img2_color, mass, None, mode)
                 
             if process_flag:
 
@@ -358,6 +365,7 @@ def n_stitching(tile_grid, refine_flag=False):
                 
             else:
                 stitching_res, mass = stitching_res_temp, mass_temp
+                stitching_res_color = stitching_res_color_temp
                 stitching_res = np.uint8(stitching_res)
 
             ### DEBUG ###

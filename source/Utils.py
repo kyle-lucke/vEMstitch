@@ -377,7 +377,7 @@ def stitch_add_mask_linear_per_border(mask1, mask2):
     return mass_overlap_1, mass_overlap_2, mask_super, mask_overlap
 
 
-def direct_stitch(im1, im2, im1_mask, im2_mask):
+def direct_stitch(im1, im2, im1_color, im2_color, im1_mask, im2_mask):
     im1_shape = im1.shape
     im2_shape = im2.shape
 
@@ -391,18 +391,30 @@ def direct_stitch(im1, im2, im1_mask, im2_mask):
     h = im1_shape[0]
     extra_w = im2_shape[1] - dis_w
     w = im1_shape[1] + extra_w
-    stitching_im1_res = np.zeros((h, w))
-    stitch_im1_mask = np.zeros((h, w))
-    stitching_im1_res[:, :im1_shape[1]] = im1
-    stitch_im1_mask[:, :im1_shape[1]] = im1_mask
 
+    stitching_im1_res = np.zeros((h, w))
+    stitching_im1_color_res = np.zeros((h, w, 3))
+    stitch_im1_mask = np.zeros((h, w))
+
+    stitching_im1_res[:, :im1_shape[1]] = im1
+    stitching_im1_color_res[:, :im1_shape[1]] = im1_color
+    
+    stitch_im1_mask[:, :im1_shape[1]] = im1_mask
+    
     stitch_im2_res = np.zeros((h, w))
+    stitch_im2_color_res = np.zeros((h, w, 3))
     stitch_im2_mask = np.zeros((h, w))
+
     stitch_im2_mask[dis_h:im2_shape[0] + dis_h, im1_shape[1] - dis_w:] = 1.0
     stitch_im2_mask = stitch_im2_mask * (1 - stitch_im1_mask)
+
     stitch_im2_res[dis_h:im2_shape[0] + dis_h, im1_shape[1] - dis_w:] = im2
+    stitch_im2_color_res[dis_h:im2_shape[0] + dis_h, im1_shape[1] - dis_w:] = im2_color
 
     stitching_res = stitching_im1_res * stitch_im1_mask + stitch_im2_res * stitch_im2_mask
+
+    stitching_res_color = stitching_im1_color_res * stitch_im1_mask[:, :, np.newaxis] + stitch_im2_color_res * stitch_im2_mask[:, :, np.newaxis]
+    
     mass = stitch_im1_mask + stitch_im2_mask
 
-    return stitching_res, mass, None
+    return stitching_res, stitching_res_color, mass, None
