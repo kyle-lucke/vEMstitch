@@ -4,9 +4,7 @@ import logging
 import numpy as np
 from scipy import linalg
 
-from Utils import flann_match, generate_None_list, rigidity_cons
-
-logger = logging.getLogger(__name__)
+from .Utils import flann_match, generate_None_list, rigidity_cons
 
 def RANSAC(ps1, ps2, iter_num, min_dis):
     point_num = ps1.shape[0]
