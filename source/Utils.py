@@ -229,8 +229,8 @@ def flann_match(kp1, dsp1, kp2, dsp2, ratio=0.4, im1_mask=None, im2_mask=None, s
 
     logger.info(f"Matches after ratio test: {len(good)}")
 
-    # DEBUG
-    if 'plot_kp_matches' in kwargs['kwargs'] and kwargs['kwargs']['plot_kp_matches']:
+    # DEBUG: plot good KPs that pass the ratio test
+    if kwargs and 'plot_kp_matches' in kwargs['kwargs'] and kwargs['kwargs']['plot_kp_matches']:
         im1, im2 = kwargs['kwargs']['im1'], kwargs['kwargs']['im2']
         matched_im = cv2.drawMatchesKnn(im1, kp1, im2, kp2, matches,
                                         outImg=None, matchesMask=good_matches,
@@ -240,11 +240,17 @@ def flann_match(kp1, dsp1, kp2, dsp2, ratio=0.4, im1_mask=None, im2_mask=None, s
 
         import matplotlib.pyplot as plt
         plt.imshow(matched_im, cmap='gray')
+        plt.axis('off')
+        
+        mng = plt.get_current_fig_manager()
+        mng.resize(*mng.window.maxsize())
+
+        plt.tight_layout()
         plt.show()
 
     kp_length = len(srcdsp)
     if kp_length <= 2:
-        logger("feature number = %d" % len(srcdsp))
+        logger.info("feature number = %d" % len(srcdsp))
         if len(srcdsp) == 1:
             return [], []
         return srcdsp, tgtdsp
