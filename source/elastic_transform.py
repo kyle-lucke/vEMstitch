@@ -8,6 +8,7 @@ from .Utils import unique
 from .Utils import stitch_add_mask_linear_border, normalize_img, stitch_add_mask_linear_per_border
 
 EPS = 1e-12
+TIKHONOV_REG = 1e-4
 
 def local_TPS(im1, im2, im1_color, im2_color, H, X1_ok, X2_ok, im1_mask=None, im2_mask=None, mode=None):
     if im1_mask is None:
@@ -47,7 +48,9 @@ def local_TPS(im1, im2, im1_color, im2_color, H, X1_ok, X2_ok, im1_mask=None, im
     mosaich = len(vr)
 
     # align the sub coordinates with the mosaic coordinates
-    margin = 0.1 * min(imsize1[0], imsize1[1])  # additional margin of the reprojected image region
+
+    ## additional margin of the reprojected image region
+    margin = 0.1 * min(imsize1[0], imsize1[1])  
     u0_im_ = max(min(box2_[0, :]) - margin, u0)
     u1_im_ = min(max(box2_[0, :]) + margin, u1)
     v0_im_ = max(min(box2_[1, :]) - margin, v0)
@@ -69,7 +72,7 @@ def local_TPS(im1, im2, im1_color, im2_color, H, X1_ok, X2_ok, im1_mask=None, im
     sub_v1_ = min([imsize2[0] - 1, max(box1_2[1, :])])
 
     # TPS
-    # merge the coincided points（重合点）
+    # merge the coincided points（Polymerization point）
     ok_nd1 = np.full(X1_ok.shape[1], False)
     _, idx1 = unique(np.round(X1_ok))
     ok_nd1[idx1] = True
@@ -112,8 +115,7 @@ def local_TPS(im1, im2, im1_color, im2_color, H, X1_ok, X2_ok, im1_mask=None, im
     G_[0:n, 1] = hyn
 
     # apply Tikhonov regularization to improve conditioning
-    c = 1e-4
-    K_ += c*np.eye(K_.shape[0], M=K_.shape[1])
+    K_ += TIKHONOV_REG*np.eye(K_.shape[0], M=K_.shape[1])
 
     # solve the linear system
     W_ = linalg.solve(K_, G_)
@@ -242,16 +244,5 @@ def local_TPS(im1, im2, im1_color, im2_color, H, X1_ok, X2_ok, im1_mask=None, im
     stitching_res = im1_p * warped_mask1 + im2_p * warped_mask2
 
     stitching_res_color = im1_color_p * warped_mask1[:, :, np.newaxis] + im2_color_p * warped_mask2[:, :, np.newaxis]
-    
-    
-    # fig, axs = plt.subplots(nrows=2, ncols=1)
-
-    # for ax in axs.flat:
-    #     ax.axis('off')
-    
-    # axs[0].imshow(stitching_res)
-    # axs[1].imshow(stitching_res_color.astype(np.uint8))
-    # plt.show()
-    # exit()
     
     return stitching_res, stitching_res_color, [v, u], [v_, u_], mass, overelap_mass
