@@ -120,7 +120,7 @@ def preprocess(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode):
             return stitching_res, stitching_res_color, mass, None
 
         if np.std(im2[:, :half_w]) <= 12.0:
-            return direct_stitch(im1, im2, im1_mask, im2_mask)
+            return direct_stitch(im1, im2, im1_color, im2_color, im1_mask, im2_mask)
         return True, True, True, True
     else:
         return True, True, True, True
