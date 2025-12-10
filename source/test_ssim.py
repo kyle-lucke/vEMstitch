@@ -9,7 +9,8 @@ def main():
 
   cli.add_argument("im1_pth")
   cli.add_argument("im2_pth")
-
+  cli.add_argument('--visualize', action='store_true')
+  
   args = cli.parse_args()
   
   im1 = cv2.cvtColor(cv2.imread(args.im1_pth), cv2.COLOR_BGR2GRAY)
@@ -22,9 +23,10 @@ def main():
   (score, diff) = structural_similarity(im1, im2, full=True)
   print(f"SSIM: {score:.4f}")
 
-  import matplotlib.pyplot as plt
-  plt.imshow(diff)
-  plt.show()
+  if args.visualize:
+    import matplotlib.pyplot as plt
+    plt.imshow(diff)
+    plt.show()
   
 if __name__ == '__main__':
   main()
