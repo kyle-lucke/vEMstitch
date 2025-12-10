@@ -4,7 +4,7 @@ import logging
 import numpy as np
 from scipy import linalg
 
-from Utils import flann_match, generate_None_list, rigidity_cons
+from Utils import flann_match, flann_match_subset, generate_None_list, rigidity_cons
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ def RANSAC(ps1, ps2, iter_num, min_dis):
     for it in range(iter_num):
         subset = random.sample(list(range(point_num)), 4)
 
+        # skip subsets that do meet the rigidity constraint
         if not rigidity_cons(x1[subset, :], y1[subset, :], x2[subset, :], y2[subset, :]):
             ok[it] = False
             score[it] = 0
@@ -57,15 +58,19 @@ def RANSAC(ps1, ps2, iter_num, min_dis):
     return H, ok
 
 
-def rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_ratio=0.4, **kwargs):
+def rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_ratio=0.4, subset_flann=False, **kwargs):
     dis = 0.0
     if mode == "d":
         dis = im1_mask.shape[0]
     elif mode == "l" or "r":
         dis = im1_mask.shape[1]
     shifting = (mode, dis)
-    
-    X1, X2 = flann_match(kp1, dsp1, kp2, dsp2, ratio=flann_ratio, im1_mask=im1_mask, im2_mask=im2_mask, shifting=shifting, **kwargs)
+
+    if subset_flann:
+        X1, X2 = flann_match_subset(kp1, dsp1, kp2, dsp2, mode, ratio=flann_ratio, im1_mask=im1_mask, im2_mask=im2_mask, shifting=shifting, **kwargs)
+        
+    else:
+        X1, X2 = flann_match(kp1, dsp1, kp2, dsp2, ratio=flann_ratio, im1_mask=im1_mask, im2_mask=im2_mask, shifting=shifting, **kwargs)
     if len(X1) == 0:
         logger.info("len(X1) == 0. Falling back to fast_brief routine.")
         return None, None, None, None

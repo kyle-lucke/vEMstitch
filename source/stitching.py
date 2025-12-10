@@ -47,11 +47,23 @@ def stitching_pair(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, ove
         
     im1_shape = im1.shape
     im2_shape = im2.shape
-    H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask,
-                                    mode, flann_ratio=0.5,
-                                    kwargs={'im1': im1, 'im2': im2,
-                                            'plot_kp_matches': False})
 
+    # original
+    # H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask,
+    #                                 mode, flann_ratio=0.5,
+    #                                 kwargs={'im1': im1, 'im2': im2,
+    #                                         'im1_color': post_process(im1_color),
+    #                                         'im2_color': post_process(im2_color),
+    #                                         'plot_kp_matches': False})
+
+    # new:
+    H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask,
+                                    mode, flann_ratio=0.5, subset_flann=True,
+                                    kwargs={'im1': im1, 'im2': im2,
+                                            'im1_color': post_process(im1_color),
+                                            'im2_color': post_process(im2_color),
+                                            'plot_kp_matches': False})
+    
     if H is None:
         X1, X2, height, im1_region, im2_region = None, None, None, None, None
         height = int(im2_shape[1] * overlap)
@@ -85,8 +97,14 @@ def stitching_rows(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, ref
     # plot_single_image(im2 * im2_sift_mask)
     # exit()
     
-    kp1, dsp1, kp2, dsp2 = SIFT(im1, im2)
-    H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_ratio=0.5)
+    kp1, dsp1, kp2, dsp2 = SIFT(im1, im2, im1_sift_mask, im2_sift_mask)
+
+    # original:
+    # H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_ratio=0.5)
+    
+    # new:
+    H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_ratio=0.5, subset_flann=True, kwargs={'im1': im1, 'im2': im2, 'im1_color': im1_color, 'im2_color': im2_color, 'plot_kp_matches': False, 'plot_kp_vertical': False})
+
     if refine_flag:
         stitching_res, stitching_res_color, mass, overlap_mass = refinement_local(im1, im2, im1_color, im2_color, H, X1, X2, ok, im1_mask, im2_mask, mode)
         if stitching_res is None:
