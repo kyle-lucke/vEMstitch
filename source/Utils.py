@@ -6,6 +6,127 @@ import os
 
 logger = logging.getLogger(__name__)
 
+COLORS = [(0, 0, 255), # Blue
+          (255, 0, 0), # Red
+          (0, 255, 0), # Green
+          (255, 0, 214) # Grey(ish)
+          ]
+
+def draw_matches_vertical(img1, kp1, img2, kp2, matches, draw_matched_kps=False):
+    """
+    Draws matches between two images, stacking them vertically.
+    """
+    h1, w1 = img1.shape[:2]
+    h2, w2 = img2.shape[:2]
+
+    # kp objects are mutable, so make copy here so the input
+    # parameters are not modified.
+    kp1 = kp1.copy()
+    kp2 = kp2.copy()
+    
+    # Create a new canvas with appropriate height and max width
+    vis = np.zeros((h1 + h2, max(w1, w2), 3), np.uint8)
+    
+    # Place images onto the new canvas
+    vis[:h1, :w1] = img1
+    vis[h1:, :w2] = img2
+    
+    # Adjust keypoint coordinates for the second image
+    # cv2.drawMatchesKnn expects kp2 to be based on the *original* image
+    # We need to adjust the 'matches' data to point to the correct vertical location
+    # Note: cv2.drawMatchesKnn actually handles the coordinate offset internally 
+    # when given two separate images and a single output canvas (which is not how we set this up).
+    # We need a custom drawing logic or use the original `drawMatches` which handles canvas creation.
+
+    # A simpler approach using drawMatches with a custom combined image
+    # This requires manually adjusting all matched keypoint coordinates in kp2
+    adjusted_kp2 = []
+    for kp in kp2:
+        kp.pt = (kp.pt[0], kp.pt[1] + h1)
+        adjusted_kp2.append(kp)
+
+    # Use a loop to draw lines manually on the combined image for better control
+    for match in matches:
+            p1 = tuple(map(int, kp1[match[0]].pt)) # queryIdx
+            p2 = tuple(map(int, adjusted_kp2[match[1]].pt)) # trainIdx
+            cv2.line(vis, p1, p2, (0, 255, 0), 1) # Green lines
+
+            if draw_matched_kps:
+                cv2.circle(vis, tuple(map(int, kp1[match[0]].pt)), 4, (0, 0, 255), 1)
+
+                cv2.circle(vis, tuple(map(int, adjusted_kp2[match[1]].pt)), 4, (0, 0, 255), 1)
+
+            
+    # Draw keypoints (optional)
+    if not draw_matched_kps:
+    
+        for kp in kp1:
+            cv2.circle(vis, tuple(map(int, kp.pt)), 4, (0, 0, 255), 1)
+            
+        for kp in adjusted_kp2:
+            cv2.circle(vis, tuple(map(int, kp.pt)), 4, (0, 0, 255), 1)
+        
+    return vis
+
+# for drawing after filter_isolate or filter_geometry
+def draw_matches_after_filter(img1, kp1, img2, kp2):
+    """
+    Draws matches between two images, stacking them vertically.
+    """
+    h1, w1 = img1.shape[:2]
+    h2, w2 = img2.shape[:2]
+    
+    # Create a new canvas with appropriate height and max width
+    vis = np.zeros((h1 + h2, max(w1, w2), 3), np.uint8)
+    
+    # Place images onto the new canvas
+    vis[:h1, :w1] = img1
+    vis[h1:, :w2] = img2
+    
+    # Adjust keypoint coordinates for the second image
+    # cv2.drawMatchesKnn expects kp2 to be based on the *original* image
+    # We need to adjust the 'matches' data to point to the correct vertical location
+    # Note: cv2.drawMatchesKnn actually handles the coordinate offset internally 
+    # when given two separate images and a single output canvas (which is not how we set this up).
+    # We need a custom drawing logic or use the original `drawMatches` which handles canvas creation.
+
+    # A simpler approach using drawMatches with a custom combined image
+    # This requires manually adjusting all matched keypoint coordinates in kp2
+    adjusted_kp2 = []
+    for kp in kp2:
+        kp = (kp[0], kp[1] + h1)
+        adjusted_kp2.append(kp)
+
+    adjusted_kp2 = np.float32(adjusted_kp2)
+        
+    # Use a loop to draw lines manually on the combined image for better control
+    for p1, p2 in zip(kp1, adjusted_kp2):
+            # p1 = tuple(map(int, kp1[match[0]].pt)) # queryIdx
+            p1 = tuple(p1.astype(int)) # queryIdx
+            
+            # p2 = tuple(map(int, adjusted_kp2[match[1]].pt)) # trainIdx
+            p2 = tuple(p2.astype(int)) # trainIdx
+            cv2.line(vis, p1, p2, (0, 255, 0), 1) # Green lines
+
+            # draw KPs
+            cv2.circle(vis, p1, 4, (0, 0, 255), 1)
+            cv2.circle(vis, p2, 4, (0, 0, 255), 1)
+        
+    return vis
+
+def draw_keypoints(img, kp, kp_color):
+
+    # # Create a new canvas with appropriate height and max width
+    # vis = np.zeros_like(img, np.uint8)
+
+    # vis[:, :] = img
+
+    # draw KPs
+    for p in kp:
+        cv2.circle(img, tuple(map(int, p.pt)), 4, kp_color, 1) 
+
+    return img
+        
 def generate_None_list(m, n):
     a = []
     for i in range(m):
@@ -226,20 +347,27 @@ def flann_match(kp1, dsp1, kp2, dsp2, ratio=0.4, im1_mask=None, im2_mask=None, s
 
     srcdsp = np.float32([kp1[m[0]].pt for m in good])
     tgtdsp = np.float32([kp2[m[1]].pt for m in good])
-
+    
     logger.info(f"Matches after ratio test: {len(good)}")
 
     # DEBUG: plot good KPs that pass the ratio test
     if kwargs and 'plot_kp_matches' in kwargs['kwargs'] and kwargs['kwargs']['plot_kp_matches']:
-        im1, im2 = kwargs['kwargs']['im1'], kwargs['kwargs']['im2']
-        matched_im = cv2.drawMatchesKnn(im1, kp1, im2, kp2, matches,
-                                        outImg=None, matchesMask=good_matches,
-                                        matchColor=(0,255,0),
-                                        singlePointColor=(0,255,255),
-                                        flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS)
+
+        im1, im2 = kwargs['kwargs']['im1_color'], kwargs['kwargs']['im2_color']
+        
+        if kwargs['kwargs']['plot_kp_vertical']:
+
+            matched_im = draw_matches_vertical(im1, kp1, im2, kp2, good)
+            
+        else:        
+            matched_im = cv2.drawMatchesKnn(im1, kp1, im2, kp2, matches,
+                                            outImg=None, matchesMask=good_matches,
+                                            matchColor=(0,255,0),
+                                            singlePointColor=(0,255,255),
+                                            flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS)
 
         import matplotlib.pyplot as plt
-        plt.imshow(matched_im, cmap='gray')
+        plt.imshow(matched_im)
         plt.axis('off')
         
         mng = plt.get_current_fig_manager()
