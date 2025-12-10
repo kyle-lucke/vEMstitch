@@ -27,7 +27,7 @@ def plot_single_image(img, grayscale=True):
     plt.show()
 
 def stitching_pair(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, overlap=0.15, sift_mask_percent=0.2):
-
+    
     # mask everything but RHS edge for im1:
     im1_sift_mask = np.zeros_like(im1, dtype=np.uint8)
     im1_sift_mask_start = im1.shape[1] - int(im1.shape[1] * sift_mask_percent)
@@ -289,8 +289,12 @@ def three_stitching(tile_grid, refine_flag=False):
         plt.show()
         # exit()
         ############
-        
+
+    col_number = 0
     while len(tier_list) >= 2:
+        logging.info(f"Stitching column {col_number+1} / {tile_grid.n_cols}")
+        col_number += 1
+
         im1 = tier_list[0]
         im2 = tier_list[1]
         im1_mask = tier_mask_list[0]
@@ -424,7 +428,12 @@ def n_stitching(tile_grid, refine_flag=False):
 
     # stitch together image rows:
     logger.info(f"Stitching rows")
+    
+    col_number = 0
     while len(tier_list) >= 2:
+        logging.info(f"Stitching column {col_number+1} / {tile_grid.n_cols}")
+        col_number += 1
+        
         im1 = tier_list[0]
         im2 = tier_list[1]
         im1_mask = tier_mask_list[0]
@@ -445,6 +454,7 @@ def n_stitching(tile_grid, refine_flag=False):
         tier_mask_list = tier_mask_list[1:]
         tier_list_color = tier_list_color[1:]
 
+    # clip image to [0, 255] range and convert to BGR
     final_res_color = post_process(tier_list_color[0])
         
     return final_res_color
