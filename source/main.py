@@ -22,7 +22,6 @@ parser.add_argument('--pattern', type=str, default='n', help='two, three, or n')
 parser.add_argument('--refine', action='store_true', default=False, help='refine or not')
 
 parser.add_argument('--input-file-ext', default='tif', choices=['tif', 'bmp', 'png'])
-# parser.add_argument('--output-file-ext', default='.png', choices=['png', 'tif', 'bmp'])
 
 parser.add_argument('--parallel', action='store_true')
 parser.add_argument('--n-jobs', type=int, default=4)
