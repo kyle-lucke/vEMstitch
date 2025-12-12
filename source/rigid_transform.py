@@ -9,6 +9,17 @@ from Utils import flann_match, flann_match_subset, generate_None_list, rigidity_
 logger = logging.getLogger(__name__)
 
 def RANSAC(ps1, ps2, iter_num, min_dis):
+
+    '''
+
+    ps1: (n, 2) np.array of KPs from source image.
+    ps2: (n, 2) np.array of KPs from target image.
+    iter_num: int that specifies the number of RANSAC iterations to run.
+    min_dis: float specifying the maximum allowed distance for a point
+    to be considered an inlier.
+    
+    '''
+    
     point_num = ps1.shape[0]
 
     x1 = ps1[:, 0].reshape(-1, 1)
@@ -16,6 +27,8 @@ def RANSAC(ps1, ps2, iter_num, min_dis):
     x2 = ps2[:, 0].reshape(-1, 1)
     y2 = ps2[:, 1].reshape(-1, 1)
 
+    # Scales the keypoints so that their average value is 1. This
+    # helps improve numerical stability during matrix operations.
     scale = 1 / np.mean(np.vstack([x1, y1, x2, y2]))
     x1 *= scale
     y1 *= scale
@@ -25,34 +38,56 @@ def RANSAC(ps1, ps2, iter_num, min_dis):
     X = np.hstack([np.zeros((point_num, 3)), x1, y1, np.ones((point_num, 1)), -y2 * x1, -y2 * y1, -y2])
     Y = np.hstack([x1, y1, np.ones((point_num, 1)), np.zeros((point_num, 3)), -x2 * x1, -x2 * y1, -x2])
 
+    # computed homography at each iteration
     H = generate_None_list(iter_num, 1)
+
+    # number of inliers for each iteration
     score = generate_None_list(iter_num, 1)
+
+    # inlier mask for each iteration
     ok = generate_None_list(iter_num, 1)
+
+    # matrix used to compute homography at each iteration.
     A = generate_None_list(iter_num, 1)
 
     for it in range(iter_num):
         subset = random.sample(list(range(point_num)), 4)
 
         # skip subsets that do meet the rigidity constraint
-        if not rigidity_cons(x1[subset, :], y1[subset, :], x2[subset, :], y2[subset, :]):
+        if not rigidity_cons(x1[subset, :], y1[subset, :],
+                             x2[subset, :], y2[subset, :]):
+            
             ok[it] = False
             score[it] = 0
             continue
 
+        # compute homography:
+
+        # 1) compute Singular Value Decomposition for current subset
+        # of points
         A[it] = np.vstack([X[subset, :], Y[subset, :]])
         U, S, V = linalg.svd(A[it])
+
+        # extract homography solution
         h = V.T[:, 8]
         H[it] = h.reshape(3, 3)
+
+        # check number of inliers less than min_dis
         dis = np.dot(X, h)**2 + np.dot(Y, h)**2
         ok[it] = dis < min_dis * min_dis
         score[it] = sum(ok[it])
 
+    # get best score (number of inliers) and corresponding iteration.
     score, best = max(score), np.argmax(score)
+
+    # compute homography using iterion that results in most inliers.
     ok = ok[best]
     A = np.vstack([X[ok, :], Y[ok, :]])
     U, S, V = linalg.svd(A, 0)    
     h = V.T[:, 8]
     H = h.reshape(3, 3)
+
+    # scale homography back to original scale.
     H = np.dot(np.dot(np.array([[1/scale, 0, 0], [0, 1/scale, 0], [0, 0, 1]]), H),
                np.array([[scale, 0, 0], [0, scale, 0], [0, 0, 1]]))
     return H, ok

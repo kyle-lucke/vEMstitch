@@ -271,12 +271,30 @@ def filter_geometry(src, tgt, window_size=3, index_flag=False, shifting=None):
 
 
 def rigidity_cons(x, y, x_, y_):
+
+    '''
+
+    x: 1D np.array containing x positions of good KPs from first (i.e., source) image.
+    y: 1D np.array containing y positions of good KPs from first (i.e., source) image.
+
+    x_: 1D np.array containing x positions of good KPs from second (i.e., target) image.
+    y_: 1D np.array containing y positions of good KPs from second (i.e., target) image.
+
+    Invariant: all input parameters have 4 elements and the KPs from
+    the source and target image have been matched.
+    
+    Checks that the quadrilaterial formed by the four points in the
+    source image are transformed rigidly to the second image (i.e.,
+    the shape and orientation of the quadrilateral are preserved).
+
+    '''
+    
     flag = True
     for i in range(4):
         V = (x[(i + 1) % 4] - x[i]) * (y[(i + 2) % 4] - y[(i + 1) % 4]) - (y[(i + 1) % 4] - y[i]) * (
-                    x[(i + 2) % 4] - x[(i + 1) % 4])
+             x[(i + 2) % 4] - x[(i + 1) % 4])
         V_ = (x_[(i + 1) % 4] - x_[i]) * (y_[(i + 2) % 4] - y_[(i + 1) % 4]) - (y_[(i + 1) % 4] - y_[i]) * (
-                x_[(i + 2) % 4] - x_[(i + 1) % 4])
+              x_[(i + 2) % 4] - x_[(i + 1) % 4])
         V_s = np.sign(V)
         V_s_ = np.sign(V_)
         if V_s != V_s_:
@@ -546,7 +564,13 @@ def flann_match_subset(kp1, dsp1, kp2, dsp2, mode, ratio=0.4, n_subsets=8, im1_m
 
         kp2_subset = kp2_subsets[i] 
         dsp2_subset = dsp2_subsets[i]
-    
+
+        # if number of descriptors in subset is less than k=2, skip as
+        # we cannot do KP matching
+        if not(len(dsp1_subset) >= 2 and len(dsp2_subset) >= 2):
+            logging.info(f"dsp subset too small, skipping subset {i}")
+            continue
+        
         matches = flann.knnMatch(dsp1_subset, dsp2_subset, k=2)
 
         good = []
