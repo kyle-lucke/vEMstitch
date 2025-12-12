@@ -4,10 +4,10 @@ from joblib import Parallel, delayed
 import cv2
 import numpy as np
 
-from Utils import SIFT, direct_stitch
-from elastic_transform import local_TPS
-from rigid_transform import rigid_transform
-from refinement import refinement_local, fast_brief
+from .Utils import SIFT, direct_stitch
+from .elastic_transform import local_TPS
+from .rigid_transform import rigid_transform
+from .refinement import refinement_local, fast_brief
 
 import logging
 logger = logging.getLogger(__name__)
@@ -505,10 +505,10 @@ def stitch_columns_for_row(r, tile_grid, refine_flag):
             stitching_res_color = stitching_res_color_temp
             stitching_res = np.uint8(stitching_res)
             
-    return {'r': r,
+    return {'row_idx': r,
             'stitching_res': stitching_res,
-            "mass": mass,
-            "stitching_res_color": stitching_res_color}
+            'mass': mass,
+            'stitching_res_color': stitching_res_color}
 
 def n_stitching_parallel(tile_grid, n_jobs, refine_flag=False):
 
@@ -516,19 +516,37 @@ def n_stitching_parallel(tile_grid, n_jobs, refine_flag=False):
     tier_mask_list = []
     tier_list_color = []
 
-    # step 1) stitch together the images in each row across all columns
-    row_results = Parallel(n_jobs=n_jobs, verbose=10)(
-        delayed(stitch_columns_for_row)(
-            r, tile_grid, refine_flag
-        ) for r in range(tile_grid.n_rows) 
-    )
+    # special case: there is only 1 column in the tile grid
+    if tile_grid.n_cols == 1:
+
+        row_results = []
+        for r in range(tile_grid.n_rows):
+            stitching_res = tile_grid.get_tile(r, 0)
+            stitching_res_color = tile_grid.get_tile(r, 0, grayscale=False)
+
+            mass = np.ones(stitching_res.shape)
+            
+            row_results.append({
+                'row_idx': r,
+                'stitching_res': stitching_res,
+                'mass': mass,
+                'stitching_res_color': stitching_res_color
+            })
+        
+    else:
+        # step 1) stitch together the images in each row across all columns
+        row_results = Parallel(n_jobs=n_jobs, verbose=10)(
+            delayed(stitch_columns_for_row)(
+                r, tile_grid, refine_flag
+            ) for r in range(tile_grid.n_rows) 
+        )
     
     tier_list = []
     tier_mask_list = []
     tier_list_color = []
 
     # Put stitched rows into correct order for further stitching
-    for res in sorted(row_results, key=lambda x: x['r']):
+    for res in sorted(row_results, key=lambda x: x['row_idx']):
         tier_list.append(res['stitching_res'])
         tier_mask_list.append(res['mass'])
         tier_list_color.append(res['stitching_res_color'])

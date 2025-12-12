@@ -4,7 +4,7 @@ import logging
 import numpy as np
 from scipy import linalg
 
-from Utils import flann_match, flann_match_subset, generate_None_list, rigidity_cons
+from .Utils import flann_match, flann_match_subset, generate_None_list, rigidity_cons
 
 logger = logging.getLogger(__name__)
 
