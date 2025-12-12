@@ -27,7 +27,7 @@ def plot_single_image(img, grayscale=True):
     plt.show()
 
 def stitching_pair(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, overlap=0.15, sift_mask_percent=0.2):
-
+    
     # mask everything but RHS edge for im1:
     im1_sift_mask = np.zeros_like(im1, dtype=np.uint8)
     im1_sift_mask_start = im1.shape[1] - int(im1.shape[1] * sift_mask_percent)
@@ -47,11 +47,23 @@ def stitching_pair(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, ove
         
     im1_shape = im1.shape
     im2_shape = im2.shape
-    H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask,
-                                    mode, flann_ratio=0.5,
-                                    kwargs={'im1': im1, 'im2': im2,
-                                            'plot_kp_matches': False})
 
+    # original
+    # H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask,
+    #                                 mode, flann_ratio=0.5,
+    #                                 kwargs={'im1': im1, 'im2': im2,
+    #                                         'im1_color': post_process(im1_color),
+    #                                         'im2_color': post_process(im2_color),
+    #                                         'plot_kp_matches': False})
+
+    # new:
+    H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask,
+                                    mode, flann_ratio=0.5, subset_flann=True,
+                                    kwargs={'im1': im1, 'im2': im2,
+                                            'im1_color': post_process(im1_color),
+                                            'im2_color': post_process(im2_color),
+                                            'plot_kp_matches': False})
+    
     if H is None:
         X1, X2, height, im1_region, im2_region = None, None, None, None, None
         height = int(im2_shape[1] * overlap)
@@ -85,8 +97,14 @@ def stitching_rows(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, ref
     # plot_single_image(im2 * im2_sift_mask)
     # exit()
     
-    kp1, dsp1, kp2, dsp2 = SIFT(im1, im2)
-    H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_ratio=0.5)
+    kp1, dsp1, kp2, dsp2 = SIFT(im1, im2, im1_sift_mask, im2_sift_mask)
+
+    # original:
+    # H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_ratio=0.5)
+    
+    # new:
+    H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_ratio=0.5, subset_flann=True, kwargs={'im1': im1, 'im2': im2, 'im1_color': im1_color, 'im2_color': im2_color, 'plot_kp_matches': False, 'plot_kp_vertical': False})
+
     if refine_flag:
         stitching_res, stitching_res_color, mass, overlap_mass = refinement_local(im1, im2, im1_color, im2_color, H, X1, X2, ok, im1_mask, im2_mask, mode)
         if stitching_res is None:
@@ -271,8 +289,12 @@ def three_stitching(tile_grid, refine_flag=False):
         plt.show()
         # exit()
         ############
-        
+
+    col_number = 0
     while len(tier_list) >= 2:
+        logging.info(f"Stitching column {col_number+1} / {tile_grid.n_cols}")
+        col_number += 1
+
         im1 = tier_list[0]
         im2 = tier_list[1]
         im1_mask = tier_mask_list[0]
@@ -314,86 +336,104 @@ def n_stitching(tile_grid, refine_flag=False):
     tier_list = []
     tier_mask_list = []
     tier_list_color = []
-    
-    # step 1) stitch together the images in each row across all columns
-    for r in range(tile_grid.n_rows):
-        logger.info(f"Stitching columns for row {r+1} / {tile_grid.n_rows}")
-        for c in range(tile_grid.n_cols-1):
-            logger.info(f"Stitching column {c+1} / {tile_grid.n_cols}")
-            if c == 0:
-        
-                img_1 = tile_grid.get_tile(r, c)
-                img_2 = tile_grid.get_tile(r, c+1)
-        
-                img1_color = tile_grid.get_tile(r, c, grayscale=False)
-                img2_color = tile_grid.get_tile(r, c+1, grayscale=False)
 
-            else:
-                
-                img_1 = stitching_res
-                img_2 = tile_grid.get_tile(r, c+1)
+    # special case: there is only 1 column in the tile grid
+    if tile_grid.n_cols == 1:
+        for r in range(tile_grid.n_rows):
+            stitching_res = tile_grid.get_tile(r, 0)
+            stitching_res_color = tile_grid.get_tile(r, 0, grayscale=False)
 
-                img1_color = stitching_res_color
-                img2_color = tile_grid.get_tile(r, c+1, grayscale=False)
-        
-            mode = "r"
+            mass = np.ones(stitching_res.shape)
 
-            if c == 0:
+            tier_list.append(stitching_res)
+            tier_mask_list.append(mass)
+            tier_list_color.append(stitching_res_color)
             
-                stitching_res_temp, stitching_res_color_temp, mass_temp, process_flag = preprocess(img_1, img_2, img1_color, img2_color, None, None, mode)
+    else:
+            
+        # step 1) stitch together the images in each row across all columns
+        for r in range(tile_grid.n_rows):
+            logger.info(f"Stitching columns for row {r+1} / {tile_grid.n_rows}")
+            for c in range(tile_grid.n_cols-1):
+                logger.info(f"Stitching column {c+1} / {tile_grid.n_cols-1}")
+                if c == 0:
+        
+                    img_1 = tile_grid.get_tile(r, c)
+                    img_2 = tile_grid.get_tile(r, c+1)
+        
+                    img1_color = tile_grid.get_tile(r, c, grayscale=False)
+                    img2_color = tile_grid.get_tile(r, c+1, grayscale=False)
 
-            else:
-                stitching_res_temp, stitching_res_color_temp, mass_temp, process_flag = preprocess(img_1, img_2, img1_color, img2_color, mass, None, mode)
+                else:
                 
-            if process_flag:
+                    img_1 = stitching_res
+                    img_2 = tile_grid.get_tile(r, c+1)
+
+                    img1_color = stitching_res_color
+                    img2_color = tile_grid.get_tile(r, c+1, grayscale=False)
+        
+                mode = "r"
 
                 if c == 0:
-                    img_1_mask = np.ones(img_1.shape)
+            
+                    stitching_res_temp, stitching_res_color_temp, mass_temp, process_flag = preprocess(img_1, img_2, img1_color, img2_color, None, None, mode)
+
                 else:
-                    img_1_mask = mass
-                    
-                img_2_mask = np.ones(img_2.shape)
-                stitching_res, stitching_res_color, mass, _ = stitching_pair(img_1, img_2, img1_color, img2_color, img_1_mask, img_2_mask, mode)
-                stitching_res = np.uint8(stitching_res)
+                    stitching_res_temp, stitching_res_color_temp, mass_temp, process_flag = preprocess(img_1, img_2, img1_color, img2_color, mass, None, mode)
                 
-            else:
-                stitching_res, mass = stitching_res_temp, mass_temp
-                stitching_res_color = stitching_res_color_temp
-                stitching_res = np.uint8(stitching_res)
+                if process_flag:
+
+                    if c == 0:
+                        img_1_mask = np.ones(img_1.shape)
+                    else:
+                        img_1_mask = mass
+                    
+                    img_2_mask = np.ones(img_2.shape)
+                    stitching_res, stitching_res_color, mass, _ = stitching_pair(img_1, img_2, img1_color, img2_color, img_1_mask, img_2_mask, mode)
+                    stitching_res = np.uint8(stitching_res)
+                
+                else:
+                    stitching_res, mass = stitching_res_temp, mass_temp
+                    stitching_res_color = stitching_res_color_temp
+                    stitching_res = np.uint8(stitching_res)
+
+                ### DEBUG ###
+
+                # import matplotlib.pyplot as plt
+                # plt.axis('off')
+                # plt.imshow(post_process(stitching_res_color, cvt_color=False))
+                # plt.tight_layout()
+                # plt.show()
+                # # exit()
+
+                ############
+                
+            # append stitching result from this row, over all columns
+            tier_list.append(stitching_res)
+            tier_mask_list.append(mass)
+            tier_list_color.append(stitching_res_color)
 
             ### DEBUG ###
-
             # import matplotlib.pyplot as plt
             # plt.axis('off')
+            # plt.title(f"Stitched (Row {r+1} / {tile_grid.n_rows})")
             # plt.imshow(post_process(stitching_res_color, cvt_color=False))
+            # mng = plt.get_current_fig_manager()
+            # mng.resize(*mng.window.maxsize())
             # plt.tight_layout()
             # plt.show()
             # # exit()
 
             ############
 
-                
-        # append stitching result from this row, over all columns
-        tier_list.append(stitching_res)
-        tier_mask_list.append(mass)
-        tier_list_color.append(stitching_res_color)
-
-        ### DEBUG ###
-        import matplotlib.pyplot as plt
-        plt.axis('off')
-        plt.title(f"Stitched (Row {r+1} / {tile_grid.n_rows})")
-        plt.imshow(post_process(stitching_res_color, cvt_color=False))
-        mng = plt.get_current_fig_manager()
-        mng.resize(*mng.window.maxsize())
-        plt.tight_layout()
-        plt.show()
-        # exit()
-
-        ############
-
     # stitch together image rows:
     logger.info(f"Stitching rows")
+    
+    col_number = 0
     while len(tier_list) >= 2:
+        logging.info(f"Stitching column {col_number+1} / {tile_grid.n_cols}")
+        col_number += 1
+        
         im1 = tier_list[0]
         im2 = tier_list[1]
         im1_mask = tier_mask_list[0]
@@ -414,6 +454,7 @@ def n_stitching(tile_grid, refine_flag=False):
         tier_mask_list = tier_mask_list[1:]
         tier_list_color = tier_list_color[1:]
 
+    # clip image to [0, 255] range and convert to BGR
     final_res_color = post_process(tier_list_color[0])
         
     return final_res_color
