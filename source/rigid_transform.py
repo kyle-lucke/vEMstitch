@@ -72,8 +72,33 @@ def RANSAC(ps1, ps2, iter_num, min_dis):
         h = V.T[:, 8]
         H[it] = h.reshape(3, 3)
 
+        ########
+        # w/ proper reprojection error computation
+        
+        H_it = H[it]
+        # TODO: after using this, change min_dis to the range of 3-5
+        # Convert ps1 to homogeneous coordinates
+        p1 = np.hstack([x1, y1, np.ones((point_num, 1))])  # (n, 3)
+
+        # Project points using homography
+        p2_proj = (H_it @ p1.T).T                           # (n, 3)
+
+        # Normalize homogeneous coordinates
+        p2_proj = p2_proj[:, :2] / p2_proj[:, 2:3]
+
+        # Actual target points
+        p2 = np.hstack([x2, y2])                            # (n, 2)
+
+        # Reprojection error (Euclidean distance)
+        dis = np.linalg.norm(p2_proj - p2, axis=1)
+        ########
+        
+        ########
+        # w/o reprojection error computation
+        # dis = np.dot(X, h)**2 + np.dot(Y, h)**2
+        #########
+        
         # check number of inliers less than min_dis
-        dis = np.dot(X, h)**2 + np.dot(Y, h)**2
         ok[it] = dis < min_dis * min_dis
         score[it] = sum(ok[it])
 
