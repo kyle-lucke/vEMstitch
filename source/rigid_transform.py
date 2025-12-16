@@ -12,15 +12,18 @@ def RANSAC(ps1, ps2, iter_num, min_dis):
 
     '''
 
-    ps1: (n, 2) np.array of KPs from source image.
-    ps2: (n, 2) np.array of KPs from target image.
+    ps1: (n, 2) np.array of (matched) KPs from source image.
+    ps2: (n, 2) np.array of (matched) KPs from target image.
     iter_num: int that specifies the number of RANSAC iterations to run.
     min_dis: float specifying the maximum allowed distance for a point
     to be considered an inlier.
     
     '''
-    
+
     point_num = ps1.shape[0]
+
+    if point_num < 4:
+        raise ValueError("ERROR: must have atleast 4 keypoint matches to estimate homogrpahy matrix.")
 
     x1 = ps1[:, 0].reshape(-1, 1)
     y1 = ps1[:, 1].reshape(-1, 1)
@@ -51,6 +54,8 @@ def RANSAC(ps1, ps2, iter_num, min_dis):
     A = generate_None_list(iter_num, 1)
 
     for it in range(iter_num):
+
+        # randomly sample 4 matched keypoints
         subset = random.sample(list(range(point_num)), 4)
 
         # skip subsets that do meet the rigidity constraint
@@ -122,7 +127,7 @@ def rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_ratio=
     dis = 0.0
     if mode == "d":
         dis = im1_mask.shape[0]
-    elif mode == "l" or "r":
+    elif mode in ("l", "r"):
         dis = im1_mask.shape[1]
     shifting = (mode, dis)
 
