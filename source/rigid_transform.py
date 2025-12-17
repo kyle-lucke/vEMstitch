@@ -244,7 +244,7 @@ def rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_ratio=
     try:
         # w/ proper reprojection error computation + Hartley
         # normalization (for numerical stability)
-        H_ransac, ok = RANSAC(X1.copy(), X2.copy(), 4)
+        H_ransac, ok = RANSAC(X1.copy(), X2.copy(), thresh=4)
        
         # w/o proper reprojection error computation (original implementation)
         # H_ransac, ok = RANSAC(X1.copy(), X2.copy(), 2000, 0.1)
@@ -288,7 +288,7 @@ def rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_ratio=
     return H_final, ok, X1, X2
 
 
-def similiarity_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_ratio=0.4, subset_flann=False, **kwargs):
+def similarity_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_ratio=0.4, subset_flann=False, **kwargs):
     dis = 0.0
     if mode == "d":
         dis = im1_mask.shape[0]
@@ -308,13 +308,13 @@ def similiarity_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_
         return None, None, None, None
 
     try:
-        H_ransac, ok = RANSAC(X1.copy(), X2.copy(), 2000, 0.1)
+        H_ransac, ok = RANSAC(X1.copy(), X2.copy(), thresh=4)
     except Exception as e:
         logger.info(f"exception in RANSAC: {e}.\nFalling back to fast_brief routine.")
         ok = [True for _ in X1]
         return None, None, None, None
 
-    logger.info(f"Inliers from RANSAC computation: {len(ok)}")
+    logger.info(f"Inliers from RANSAC computation: {np.sum(ok)}")
 
     # X1, X2 represent the matched keypoint from the source and target
     # images, respectively.
