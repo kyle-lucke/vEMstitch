@@ -36,7 +36,7 @@ class TileGridFromDataFrame:
 
       return str_rep
 
-  # debugging function
+    # debugging function
     def plot_grid(self, color=False, save_fname=''):
         import matplotlib.pyplot as plt
 
