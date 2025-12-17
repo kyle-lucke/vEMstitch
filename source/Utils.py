@@ -193,30 +193,128 @@ def draw_matches(im1, im2, locs1, locs2, ok, vertical=False):
     return im3
 
 
-# filter isolated points
-def filter_isolate(src, tgt, shifting=None):
+# drop-in adaptive replacement for filter_isolate 
+# TODO: see if this improves things?
+def adaptive_filter_isolate(src, tgt,
+                            base_k=2,
+                            min_cluster=3,
+                            max_cluster=6,
+                            tol_factor=3.0):
+    """
+    Adaptive spatial isolation filter.
+
+    src, tgt : (N, d) matched keypoints
+    base_k   : neighbor offset used for spacing estimation
+    
+    min_cluster, max_cluster : adaptive cluster size
+    bounds. min_cluster=2 will give very sparse matches, increasing
+    max_cluster will give very dense matches.
+    
+    tol_factor : tolerance multiplier (auto-scaled). Increase to keep
+    more matches, decrease to remove more outliers
+
+    returns: filtered src, tgt
+
+    """
+
+    def adaptive_axis_filter(src, tgt, axis):
+        # sort along axis
+        order = np.argsort(src[:, axis])
+        pts = src[order]
+        tgt_pts = tgt[order]
+        coord = pts[:, axis]
+
+        n = len(coord)
+        if n < min_cluster:
+            return pts, tgt_pts
+
+        # ---- adaptive spacing estimation ----
+        diffs = coord[base_k:] - coord[:-base_k]
+        med = np.median(diffs)
+        mad = np.median(np.abs(diffs - med)) + 1e-6
+
+        # robust distance scale
+        scale = med + 1.5 * mad
+
+        # ---- adaptive cluster size ----
+        cluster = int(np.clip(n // 50, min_cluster, max_cluster))
+
+        # ---- adaptive tolerance ----
+        tol = tol_factor * scale
+
+        keep = []
+        i = 0
+        while i < n:
+            j = min(i + cluster - 1, n - 1)
+            if coord[j] - coord[i] <= tol:
+                keep.extend(range(i, j + 1))
+                i = j + 1
+            else:
+                i += 1
+
+        return pts[keep], tgt_pts[keep]
+
+    # filter x then y
+    src_f, tgt_f = adaptive_axis_filter(src, tgt, axis=0)
+    src_f, tgt_f = adaptive_axis_filter(src_f, tgt_f, axis=1)
+
+    return src_f, tgt_f
+
+def filter_isolate(src, tgt, isolation_threhsold=3, distance_scale=0.5):
+
+    '''
+
+    Removes isolated keypoints that do not have nearby neighbors
+    in either the x or y direction. Acts like a spatial consistency
+    filter/constraint.
+
+    src: (n, 2) np.array of matched keypoints from source image
+    tgt: (n, 2) np.array of matched keypoints from target image
+    isolation_threshold: float that determines if cluster of points is
+    kept.
+    
+    distance_scale: float that determines acceptable cluster distance
+    for a group of points to be considered isolated. Higher values are
+    more tolerant, lower values more strict.
+
+    '''
+    
     # filter by x-axis
+
+    # sort src points along the x-axis
     row_index = np.argsort(src[:, 0])
     src_row = src[row_index, 0]
+
+    # Compute distance between points 4 positions apart. This smooths
+    # local noise and estimates a typical spacing.
     dis = src_row[4:] - src_row[:-4]
-    mean_dis = np.mean(dis) / 2
+
+    # this value will decide what 'close' means.
+    mean_dis = np.mean(dis) * distance_scale
+    
     index = []
     i = 0
+
+    # loop over src KPs. If i and i \pm 2 are close enough, i, i+1 and
+    # i+2 are kept.
     while i < src_row.shape[0]:
         if i > src_row.shape[0] - 3:
-            if abs(src_row[i] - src_row[i - 2]) <= mean_dis * 3:
+            if abs(src_row[i] - src_row[i - 2]) <= mean_dis * isolation_threhsold:
                 index.append(i)
             i += 1
         else:
-            if abs(src_row[i] - src_row[i + 2]) <= mean_dis * 3:
+            if abs(src_row[i] - src_row[i + 2]) <= mean_dis * isolation_threhsold:
                 index = index + [i, i + 1, i + 2]
                 i = i + 3
-            else:
+            else: # no cluster, skip
                 i += 1
+    
     src = src[row_index, :][index, :]
     tgt = tgt[row_index, :][index, :]
 
     # filter by y-axis
+
+    # similiar logic as above, but over the y-axis
     col_index = np.argsort(src[:, 1])
     src_col = src[col_index, 1]
     dis = src_col[4:] - src_col[:-4]
@@ -225,11 +323,11 @@ def filter_isolate(src, tgt, shifting=None):
     i = 0
     while i < src.shape[0]:
         if i > src.shape[0] - 3:
-            if abs(src_col[i] - src_col[i - 2]) <= mean_dis * 3:
+            if abs(src_col[i] - src_col[i - 2]) <= mean_dis * isolation_threhsold:
                 index.append(i)
             i += 1
         else:
-            if abs(src_col[i] - src_col[i + 2]) <= mean_dis * 3:
+            if abs(src_col[i] - src_col[i + 2]) <= mean_dis * isolation_threhsold:
                 index = index + [i, i + 1, i + 2]
                 i = i + 3
             else:
@@ -237,9 +335,224 @@ def filter_isolate(src, tgt, shifting=None):
     return src[col_index, :][index, :], tgt[col_index, :][index, :]
 
 
-# filter by corresponding
-def filter_geometry(src, tgt, window_size=3, index_flag=False, shifting=None):
+# Generally improves over filter_geometry_robust by enforcing
+# consistent direction and magnitude. 
+def filter_geometry_vector(
+    src,
+    tgt,
+    window_size=9,
+    index_flag=False,
+    shifting=None,
+    k_global=2.5,
+    k_local=3.5,
+    min_window=3
+):
+    """
+    Robust geometric filtering using vector displacement consistency.
+
+    Parameters
+    ----------
+    src : (n, 2) ndarray
+        Source keypoints.
+    tgt : (n, 2) ndarray
+        Target keypoints.
+    window_size : int
+        Sliding window size (odd recommended).
+    index_flag : bool
+        Return indices if True.
+    shifting : tuple or None
+        Optional camera motion compensation: (mode, d)
+    k_global : float
+        Global MAD multiplier.
+    k_local : float
+        Local MAD multiplier.
+    min_window : int
+        Minimum local window size.
+
+    Returns
+    -------
+    filtered_src, filtered_tgt OR indices
+    """
+
+    n = src.shape[0]
+    assert n == tgt.shape[0], "src and tgt must have same length"
+
+    # --- 1. Compensate known motion ---
     new_tgt = tgt.copy()
+    if shifting is not None:
+        mode, d = shifting
+        if mode == "l":
+            new_tgt[:, 0] -= d
+        elif mode == "r":
+            new_tgt[:, 0] += d
+        elif mode == "d":
+            new_tgt[:, 1] += d
+
+    # --- 2. Displacement vectors ---
+    V = new_tgt - src   # (n, 2)
+
+    # --- 3. Global robust statistics (vector MAD) ---
+    global_med = np.median(V, axis=0)
+    global_dev = np.linalg.norm(V - global_med, axis=1)
+    global_mad = np.median(global_dev) + 1e-6
+    global_thresh = k_global * global_mad
+
+    # --- 4. Sliding window vector consistency ---
+    radius = window_size // 2
+    keep_idx = []
+
+    for i in range(n):
+        left = max(0, i - radius)
+        right = min(n, i + radius + 1)
+
+        if right - left < min_window:
+            left = max(0, i - min_window // 2)
+            right = min(n, left + min_window)
+
+        local_V = V[left:right]
+
+        local_med = np.median(local_V, axis=0)
+        local_dev = np.linalg.norm(V[i] - local_med)
+        local_mad = (
+            np.median(np.linalg.norm(local_V - local_med, axis=1))
+            + 1e-6
+        )
+        local_thresh = k_local * local_mad
+
+        # --- 5. Joint local + global consistency ---
+        global_dev_i = np.linalg.norm(V[i] - global_med)
+
+        if global_dev_i <= global_thresh and local_dev <= local_thresh:
+            keep_idx.append(i)
+
+    keep_idx = np.array(keep_idx, dtype=int)
+
+    if index_flag:
+        return keep_idx
+    else:
+        return src[keep_idx], tgt[keep_idx]
+
+
+
+# more robust implemetation of filter_geometry that uses robust
+# statistics, (median + mean absolute deviation, more resistant to
+# outliers than mean), adaptive threhsolds that scale with data
+# dispersion, and better numerical stability.
+def filter_geometry_robust(
+    src,
+    tgt,
+    window_size=9,
+    index_flag=False,
+    shifting=None,
+    k_global=2.5,
+    k_local=3.5,
+    min_window=3
+):
+    """
+    Robust geometric consistency filter for matched keypoints.
+
+    Parameters
+    ----------
+    src : (n, 2) ndarray
+        Source keypoints.
+    tgt : (n, 2) ndarray
+        Target keypoints.
+    window_size : int
+        Sliding window size for local consistency (odd recommended).
+    index_flag : bool
+        If True, return indices instead of filtered points.
+    shifting : tuple or None
+        Optional camera motion compensation: (mode, d)
+    k_global : float
+        Global MAD threshold multiplier.
+    k_local : float
+        Local MAD threshold multiplier.
+    min_window : int
+        Minimum window size near boundaries.
+
+    Returns
+    -------
+    filtered_src, filtered_tgt OR indices
+    """
+
+    n = src.shape[0]
+    assert n == tgt.shape[0], "src and tgt must have same length"
+
+    # --- 1. Compensate known camera motion ---
+    new_tgt = tgt.copy()
+    if shifting is not None:
+        mode, d = shifting
+        if mode == "l":
+            new_tgt[:, 0] -= d
+        elif mode == "r":
+            new_tgt[:, 0] += d
+        elif mode == "d":
+            new_tgt[:, 1] += d
+
+    # --- 2. Compute displacement magnitude ---
+    dis = np.linalg.norm(src - new_tgt, axis=1)
+
+    # --- 3. Global robust statistics ---
+    global_med = np.median(dis)
+    global_mad = np.median(np.abs(dis - global_med)) + 1e-6
+    global_thresh = global_med + k_global * global_mad
+
+    # --- 4. Sliding window robust filtering ---
+    radius = window_size // 2
+    keep_idx = []
+
+    for i in range(n):
+        left = max(0, i - radius)
+        right = min(n, i + radius + 1)
+
+        # Ensure minimum window size
+        if right - left < min_window:
+            left = max(0, i - min_window // 2)
+            right = min(n, left + min_window)
+
+        local = dis[left:right]
+
+        local_med = np.median(local)
+        local_mad = np.median(np.abs(local - local_med)) + 1e-6
+        local_thresh = local_med + k_local * local_mad
+
+        # --- 5. Joint local + global consistency ---
+        if dis[i] <= local_thresh and dis[i] <= global_thresh:
+            keep_idx.append(i)
+
+    keep_idx = np.array(keep_idx, dtype=int)
+
+    # --- 6. Output ---
+    if index_flag:
+        return keep_idx
+    else:
+        return src[keep_idx], tgt[keep_idx]
+
+
+
+
+# filter bad keypoint matches that are geometrically inconsistent
+# (e.g., have large or inconsistent displacement).
+def filter_geometry(src, tgt, window_size=3, index_flag=False, shifting=None):
+
+    '''
+
+    src: (n, 2) np.array of matched keypoints from source image.
+    tgt: (n, 2) np.array of matched keypoints from target image.
+    
+    window_size: int that controls sensitivity of filtering. Large
+    values result in a looser constraint that is less sensitive.
+
+    Assumptions: src, tgt are already ordered spatially. True matches
+    have similiar displacement vectors (distances), false matches have
+    larger or inconsistent displacement.
+
+    '''
+    
+    new_tgt = tgt.copy()
+
+    # shift target KPs to compensate for known camera motion. Ensures
+    # distances reflect true residual error.
     if shifting:
         mode, d = shifting
         if mode == "l":
@@ -251,19 +564,32 @@ def filter_geometry(src, tgt, window_size=3, index_flag=False, shifting=None):
     else:
         new_tgt = tgt[:, :]
 
+    # compute geometric error per-match (i.e. euclidean displacement
+    # between matched points). Smaller distances indicate better
+    # geometric geometric consistency.
     dis = np.sqrt(np.square(src[:, 0] - new_tgt[:, 0]) + np.square(src[:, 1] - new_tgt[:, 1]))
+    
+    # get typical displacement over all matches
     global_mean_dis = np.mean(dis)
     radius = window_size // 2
     index = []
     for i in range(src.shape[0]):
+        # boundary case
         if i <= radius - 1:
             dis_m = np.mean(dis[:window_size])
             if dis[i] <= dis_m * 1.5 and dis[i] <= global_mean_dis * 1.5:
                 index.append(i)
+
+        # typical case. Computes local mean displacement
         else:
             dis_m = np.mean(dis[i - radius: i + radius + 1])
+
+            # keep match only if is agrees with nearby matches (local
+            # constraint) and it agress with the overall match set
+            # (global constraint)
             if dis[i] <= dis_m * 1.5 and dis[i] <= global_mean_dis * 1.5:
                 index.append(i)
+
     if not index_flag:
         return src[index, :], tgt[index, :]
     else:
@@ -274,11 +600,11 @@ def rigidity_cons(x, y, x_, y_):
 
     '''
 
-    x: 1D np.array containing x positions of good KPs from first (i.e., source) image.
-    y: 1D np.array containing y positions of good KPs from first (i.e., source) image.
+    x: 1D np.array containing x positions of good KPs from source image.
+    y: 1D np.array containing y positions of good KPs from source image.
 
-    x_: 1D np.array containing x positions of good KPs from second (i.e., target) image.
-    y_: 1D np.array containing y positions of good KPs from second (i.e., target) image.
+    x_: 1D np.array containing x positions of good KPs from  target image.
+    y_: 1D np.array containing y positions of good KPs from  target image.
 
     Invariant: all input parameters have 4 elements and the KPs from
     the source and target image have been matched.
@@ -323,11 +649,15 @@ def SIFT(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ks
 
         im1 = cv2.addWeighted(im1, 1.5, im1_gb, -0.5, 0)
         im2 = cv2.addWeighted(im2, 1.5, im2_gb, -0.5, 0)
-        
+
+    # clahe = cv2.createCLAHE(tileGridSize=(8,8))
+    
+    # im1 = clahe.apply(im1)
+    # im2 = clahe.apply(im2)
         
     sift = cv2.SIFT_create()
 
-    kp1, dsp1 = sift.detectAndCompute(im1, im1_mask)  # None --> mask
+    kp1, dsp1 = sift.detectAndCompute(im1, im1_mask)
     kp2, dsp2 = sift.detectAndCompute(im2, im2_mask)
     
     return kp1, dsp1, kp2, dsp2
@@ -437,8 +767,6 @@ def flann_match(kp1, dsp1, kp2, dsp2, ratio=0.4, im1_mask=None, im2_mask=None, s
 
         plt.tight_layout()
         plt.show()
-
-    
     
     return srcdsp, tgtdsp
 
@@ -516,11 +844,11 @@ def flann_match_subset(kp1, dsp1, kp2, dsp2, mode, ratio=0.4, n_subsets=8, im1_m
     
     kp2_subsets, dsp2_subsets = _generate_spatial_subsets(kp2, dsp2, n_subsets,
                                                           im2_axis_shape, mode)
-
+    
     # DEBUG: draw subset keypoints
-    # im1_draw = kwargs['kwargs']['im1_color'].copy()
-    # for i, kp_subset in enumerate(kp1_subsets):
-    #     im1_draw = draw_keypoints(im1_draw, kp_subset, COLORS[i % len(COLORS)])
+    im1_draw = kwargs['kwargs']['im1_color'].copy()
+    for i, kp_subset in enumerate(kp1_subsets):
+        im1_draw = draw_keypoints(im1_draw, kp_subset, COLORS[i % len(COLORS)])
         
     # import matplotlib.pyplot as plt
     # plt.imshow(im1_draw)
@@ -532,21 +860,40 @@ def flann_match_subset(kp1, dsp1, kp2, dsp2, mode, ratio=0.4, n_subsets=8, im1_m
     # plt.tight_layout()
     # plt.show()
 
-    # im2_draw = kwargs['kwargs']['im2_color'].copy()
-    # for i, kp_subset in enumerate(kp2_subsets):
-    #     im2_draw = draw_keypoints(im2_draw, kp_subset, COLORS[i % len(COLORS)])
-        
-    # import matplotlib.pyplot as plt
-    # plt.imshow(im2_draw)
-    # plt.axis('off')
-        
-    # mng = plt.get_current_fig_manager()
-    # mng.resize(*mng.window.maxsize())
+    im2_draw = kwargs['kwargs']['im2_color'].copy()
+    for i, kp_subset in enumerate(kp2_subsets):
+        im2_draw = draw_keypoints(im2_draw, kp_subset, COLORS[i % len(COLORS)])
 
-    # plt.tight_layout()
-    # plt.show()
+    if mode == 'r':
+        
+        # combine images:
+        im_draw_combined = np.zeros((im1_draw.shape[0], im1_draw.shape[1] + im2_draw.shape[1], 3), dtype=np.uint8)
+        
+        im_draw_combined[:, :im1_draw.shape[1]] = im1_draw
+        im_draw_combined[:, im1_draw.shape[1]:] = im2_draw
+
+    elif mode == 'd':
+
+        # combine images:
+        im_draw_combined = np.zeros((im1_draw.shape[0] + im2_draw.shape[0] , im1_draw.shape[1], 3), dtype=np.uint8)
+        
+        im_draw_combined[:im1_draw.shape[0]] = im1_draw
+        im_draw_combined[im1_draw.shape[1]:] = im2_draw
+        
+    else:
+        raise ValueError(f"Unrecognized mode: {mode}")
     
-    # exit()
+    import matplotlib.pyplot as plt
+    plt.imshow(im_draw_combined)
+    plt.axis('off')
+        
+    mng = plt.get_current_fig_manager()
+    mng.resize(*mng.window.maxsize())
+
+    plt.tight_layout()
+    plt.show()
+    
+    exit()
     
     FLANN_INDEX_KDTREE = 1
     index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
@@ -559,6 +906,8 @@ def flann_match_subset(kp1, dsp1, kp2, dsp2, mode, ratio=0.4, n_subsets=8, im1_m
     
     for i in range(n_subsets):
 
+        logger.info(f"Subset {i+1} / {n_subsets})")
+        
         kp1_subset = kp1_subsets[i] 
         dsp1_subset = dsp1_subsets[i]
 
@@ -568,7 +917,7 @@ def flann_match_subset(kp1, dsp1, kp2, dsp2, mode, ratio=0.4, n_subsets=8, im1_m
         # if number of descriptors in subset is less than k=2, skip as
         # we cannot do KP matching
         if not(len(dsp1_subset) >= 2 and len(dsp2_subset) >= 2):
-            logging.info(f"dsp subset too small, skipping subset {i}")
+            logging.info(f"Number of keypoints in subset too small, skipping subset {i}")
             continue
         
         matches = flann.knnMatch(dsp1_subset, dsp2_subset, k=2)
@@ -597,7 +946,7 @@ def flann_match_subset(kp1, dsp1, kp2, dsp2, mode, ratio=0.4, n_subsets=8, im1_m
         #     srcdsp.append(srcdsp_subset)
         #     tgtdsp.append(tgtdsp_subset)
 
-        logger.info(f"Matches after ratio test (subset {i+1} / {n_subsets}): {len(good)}")
+        logger.info(f"Matches after ratio test: {len(good)}")
 
         # DEBUG: plot good KPs that pass the ratio test
         if kwargs and 'plot_kp_matches' in kwargs['kwargs'] and kwargs['kwargs']['plot_kp_matches']:
@@ -613,7 +962,9 @@ def flann_match_subset(kp1, dsp1, kp2, dsp2, mode, ratio=0.4, n_subsets=8, im1_m
                                                 outImg=None, matchesMask=good_matches,
                                                 matchColor=(0,255,0),
                                                 singlePointColor=(0,255,255),
-                                                flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS)
+                                                
+                                                # flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS
+                                                )
 
         
                 
@@ -653,10 +1004,10 @@ def flann_match_subset(kp1, dsp1, kp2, dsp2, mode, ratio=0.4, n_subsets=8, im1_m
         if len(srcdsp_subset) >= 8:
             srcdsp_subset, tgtdsp_subset = filter_isolate(srcdsp_subset, tgtdsp_subset)
             tgtdsp_subset, srcdsp_subset = filter_isolate(tgtdsp_subset, srcdsp_subset)
-            logger.info(f"matches after filter_isolate (subset {i+1} / {n_subsets}): {len(srcdsp_subset)}")
+            logger.info(f"Matches after filter_isolate: {len(srcdsp_subset)}")
 
         srcdsp_subset, tgtdsp_subset = filter_geometry(srcdsp_subset, tgtdsp_subset, shifting=shifting)
-        logger.info(f"matches after filter_geometry (subset {i+1} / {n_subsets}): {len(srcdsp_subset)}")
+        logger.info(f"Matches after filter_geometry: {len(srcdsp_subset)}")
 
         if len(srcdsp_subset) > 0 and len(tgtdsp_subset) > 0: 
         
