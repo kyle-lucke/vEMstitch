@@ -51,23 +51,6 @@ def stitching_pair(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, ove
     im1_shape = im1.shape
     im2_shape = im2.shape
 
-    # original
-    # H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask,
-    #                                 mode, flann_ratio=FLANN_RATIO_PAIR,
-    #                                 kwargs={'im1': im1, 'im2': im2,
-    #                                         'im1_color': post_process_image(im1_color),
-    #                                         'im2_color': post_process_image(im2_color),
-    #                                         'plot_kp_matches': False})
-
-    # new:
-    # H, ok, X1, X2 = rigid_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask,
-    #                                 mode, flann_ratio=FLANN_RATIO_PAIR,
-    #                                 subset_flann=True,
-    #                                 kwargs={'im1': im1, 'im2': im2,
-    #                                         'im1_color': post_process_image(im1_color),
-    #                                         'im2_color': post_process_image(im2_color),
-    #                                         'plot_kp_matches': False})
-
     H, ok, X1, X2 = similarity_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask,
                                          mode, flann_ratio=FLANN_RATIO_PAIR,
                                          subset_flann=SUBSET_FLANN_PAIR,
@@ -80,21 +63,23 @@ def stitching_pair(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, ove
                                          })
     
     if H is None:
-        X1, X2, height, im1_region, im2_region = None, None, None, None, None
-        height = int(im2_shape[1] * overlap)
-        im1_region = [0, im1_shape[0]]
-        im2_region = [0, im2_shape[0]]
-
-        #### FIXME ###
-        # fast_brief always either fails (in various ways) or the
-        # estimated homology matrix is really really bad
-        H, ok, X1, X2 = fast_brief(im1, im2, im1_mask, im2_mask, X1, X2, height, im1_region, im2_region, mode)
+        raise RuntimeError("Error estimating similiarity matrix.")
         
-        stitching_res, stitching_res_color, _, _, mass, overlap_mass = local_TPS(im1, im2, im1_color, im2_color, H, X1.T[:, ok], X2.T[:, ok], im1_mask, im2_mask, mode)
+        # X1, X2, height, im1_region, im2_region = None, None, None, None, None
+        # height = int(im2_shape[1] * overlap)
+        # im1_region = [0, im1_shape[0]]
+        # im2_region = [0, im2_shape[0]]
 
-        # stitching_res, stitching_res_color, _, _, mass, overlap_mass = local_TPS_stable(im1, im2, im1_color, im2_color, H, X1.T[:, ok], X2.T[:, ok], im1_mask, im2_mask, mode)
+        # #### FIXME ###
+        # # fast_brief always either fails (in various ways) or the
+        # # estimated homology matrix is really really bad
+        # H, ok, X1, X2 = fast_brief(im1, im2, im1_mask, im2_mask, X1, X2, height, im1_region, im2_region, mode)
         
-        return stitching_res, stitching_res_color, mass, overlap_mass
+        # stitching_res, stitching_res_color, _, _, mass, overlap_mass = local_TPS(im1, im2, im1_color, im2_color, H, X1.T[:, ok], X2.T[:, ok], im1_mask, im2_mask, mode)
+
+        # # stitching_res, stitching_res_color, _, _, mass, overlap_mass = local_TPS_stable(im1, im2, im1_color, im2_color, H, X1.T[:, ok], X2.T[:, ok], im1_mask, im2_mask, mode)
+        
+        # return stitching_res, stitching_res_color, mass, overlap_mass
 
     stitching_res, stitching_res_color, _, _, mass, overlap_mass = local_TPS(im1, im2, im1_color, im2_color, H, X1.T[:, ok], X2.T[:, ok], im1_mask, im2_mask, mode)
 
@@ -140,6 +125,9 @@ def stitching_rows(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, ref
                                              'plot_kp_matches_ransac': PLOT_KP_MATCHES_RANSAC_ROWS
                                          })
 
+    if H is None:
+        raise RuntimeError("Error estimating similiarity matrix.")
+    
     if refine_flag:
         stitching_res, stitching_res_color, mass, overlap_mass = refinement_local(im1, im2, im1_color, im2_color, H, X1, X2, ok, im1_mask, im2_mask, mode)
         if stitching_res is None:
@@ -179,15 +167,6 @@ def preprocess(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode):
         return True, True, True, True
     else:
         return True, True, True, True
-
-
-def read_image(fname, grayscale=True):
-    image = cv2.cvtColor(cv2.imread(fname), cv2.COLOR_BGR2RGB)
-
-    if grayscale:
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-
-    return image
 
 def two_stitching(tile_grid, refine_flag=False):
     tier_list = []
