@@ -462,6 +462,32 @@ def rigidity_cons(x, y, x_, y_):
             break
     return flag
 
+def filter_image(image, filtering, mb_ksize):
+    
+    if filtering == 'sharpen':
+        # Create the sharpening kernel
+        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+
+        # Sharpen the image
+        image = cv2.filter2D(image, -1, kernel)
+            
+    elif filtering == 'median':
+        image = cv2.medianBlur(image, mb_ksize)
+
+    elif filtering == 'add_weighted':
+
+        image_gb = cv2.GaussianBlur(image, (3,3),0)
+        image = cv2.addWeighted(image, 1.5, im1_gb, -0.5, 0)
+
+    # no filtering
+    elif filtering =='' or filtering is None:
+        pass
+        
+    else:
+        raise ValueError(f'Usupported filtering type: {filtering}')
+
+    return image
+
 def SIFT(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ksize=5):
 
     # clahe = cv2.createCLAHE(tileGridSize=(4,4))
@@ -469,26 +495,8 @@ def SIFT(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ks
     # im1 = clahe.apply(im1)
     # im2 = clahe.apply(im2)
     
-    if filtering == 'sharpen':
-        # Create the sharpening kernel
-        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-
-        # Sharpen the image
-        im1 = cv2.filter2D(im1, -1, kernel)
-        im2 = cv2.filter2D(im2, -1, kernel)
-            
-    elif filtering == 'median':
-        im1 = cv2.medianBlur(im1, mb_ksize)
-        im2 = cv2.medianBlur(im2, mb_ksize)
-
-    elif filtering == 'add_weighted':
-
-        im1_gb = cv2.GaussianBlur(im1, (3,3),0)
-        im2_gb = cv2.GaussianBlur(im2, (3,3),0)
-
-        im1 = cv2.addWeighted(im1, 1.5, im1_gb, -0.5, 0)
-        im2 = cv2.addWeighted(im2, 1.5, im2_gb, -0.5, 0)
-
+    im1 = filter_image(im1, filtering, mb_ksize)
+    im2 = filter_image(im2, filtering, mb_ksize)
         
     sift = cv2.SIFT_create()
 
@@ -496,6 +504,89 @@ def SIFT(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ks
     kp2, dsp2 = sift.detectAndCompute(im2, im2_mask)
     
     return kp1, dsp1, kp2, dsp2
+
+def FAST(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ksize=5):
+
+    # clahe = cv2.createCLAHE(tileGridSize=(4,4))
+    
+    # im1 = clahe.apply(im1)
+    # im2 = clahe.apply(im2)
+    
+    im1 = filter_image(im1, filtering, mb_ksize)
+    im2 = filter_image(im2, filtering, mb_ksize)
+        
+    sift = cv2.FAST_create()
+
+    kp1, dsp1 = sift.detectAndCompute(im1, im1_mask)
+    kp2, dsp2 = sift.detectAndCompute(im2, im2_mask)
+    
+    return kp1, dsp1, kp2, dsp2
+
+def _generate_mser_kp_and_dsp(regions):
+
+    # 2. Convert MSER regions to KeyPoint objects
+    # MSER regions are lists of points. We can approximate keypoints from their centroids or bounding boxes.
+    keypoints = []
+    for region in regions:
+        # Calculate centroid
+        moments = cv2.moments(region)
+        if moments['m00'] != 0:
+            x = int(moments['m10'] / moments['m00'])
+            y = int(moments['m01'] / moments['m00'])
+            # Approximate size (e.g., using area's square root) and angle (not directly available from MSER region points)
+            area = cv2.contourArea(region)
+            size = np.sqrt(area) if area > 0 else 1.0 # Avoid zero size
+            # Create KeyPoint object. Angle and octave are approximations.
+            keypoints.append(cv2.KeyPoint(x, y, size))
+
+        # 3. Initialize a descriptor extractor (e.g., SIFT, which is robust)
+            # Note: SIFT might be in the opencv-contrib-python package (cv2.xfeatures2d.SIFT_create())
+    sift = cv2.SIFT_create()
+
+    # 4. Compute descriptors for the detected keypoints
+    keypoints, descriptors = sift.compute(gray, keypoints)
+
+    return keypoints, descriptors
+    
+
+def MSER(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ksize=5):
+
+    # clahe = cv2.createCLAHE(tileGridSize=(4,4))
+    
+    # im1 = clahe.apply(im1)
+    # im2 = clahe.apply(im2)
+    
+    im1 = filter_image(im1, filtering, mb_ksize)
+    im2 = filter_image(im2, filtering, mb_ksize)
+        
+    # 1. Detect MSER regions
+    mser = cv2.MSER_create()
+    regions, _ = mser.detectRegions(gray)
+
+    # 2. Convert MSER regions to KeyPoint objects
+    # MSER regions are lists of points. We can approximate keypoints from their centroids or bounding boxes.
+    keypoints = []
+    for region in regions:
+        # Calculate centroid
+        moments = cv2.moments(region)
+        if moments['m00'] != 0:
+            x = int(moments['m10'] / moments['m00'])
+            y = int(moments['m01'] / moments['m00'])
+            # Approximate size (e.g., using area's square root) and angle (not directly available from MSER region points)
+            area = cv2.contourArea(region)
+            size = np.sqrt(area) if area > 0 else 1.0 # Avoid zero size
+            # Create KeyPoint object. Angle and octave are approximations.
+            keypoints.append(cv2.KeyPoint(x, y, size))
+
+        # 3. Initialize a descriptor extractor (e.g., SIFT, which is robust)
+            # Note: SIFT might be in the opencv-contrib-python package (cv2.xfeatures2d.SIFT_create())
+    sift = cv2.SIFT_create()
+
+    # 4. Compute descriptors for the detected keypoints
+    keypoints, descriptors = sift.compute(gray, keypoints)
+    
+    return kp1, dsp1, kp2, dsp2
+
 
 def flann_match(kp1, dsp1, kp2, dsp2, ratio=0.4, im1_mask=None, im2_mask=None, shifting=None, **kwargs):
     """

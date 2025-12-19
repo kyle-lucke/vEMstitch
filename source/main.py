@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 import tile_grid
-from stitching import two_stitching, three_stitching, n_stitching, n_stitching_parallel
+from stitching import n_stitching, n_stitching_parallel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

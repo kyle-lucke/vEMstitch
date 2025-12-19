@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 from scipy import linalg
 
-from Utils import flann_match, flann_match_subset, generate_None_list, rigidity_cons
+from Utils import SIFT, flann_match, flann_match_subset, generate_None_list, rigidity_cons
 from vis_utils import draw_matches_helper
 
 logger = logging.getLogger(__name__)
@@ -366,7 +366,7 @@ def similarity_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_r
         VT[-1, :] *= -1
         R = VT.T @ U.T
 
-    # --- NEW: estimate scale ---
+    # --- estimate scale ---
     var_X = np.sum(np.sum(X ** 2, axis=1))
     scale = np.sum(S) / var_X
 
@@ -383,3 +383,124 @@ def similarity_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_r
     H_sim[:2, 2] = t
     
     return H_sim, ok, X1, X2
+
+def _similarity_transform(X1, X2, inlier_mask):
+
+        # X1, X2 represent the matched keypoint from the source and target
+    # images, respectively.
+    point_num = X1.shape[0]
+
+    # Use only RANSAC inliers
+    Xin = X1[inlier_mask, :]
+    Yin = X2[inlier_mask, :]
+    
+    # Compute centroids
+    centroid_1 = np.mean(Xin, axis=0)
+    centroid_2 = np.mean(Yin, axis=0)
+
+    # Center the points
+    X = Xin - centroid_1
+    Y = Yin - centroid_2
+
+    # Compute covariance
+    H = X.T @ Y
+
+    # SVD
+    U, S, VT = np.linalg.svd(H)
+
+    # Rotation
+    R = VT.T @ U.T
+    if np.linalg.det(R) < 0:
+        VT[-1, :] *= -1
+        R = VT.T @ U.T
+
+    # --- estimate scale ---
+    var_X = np.sum(np.sum(X ** 2, axis=1))
+    scale = np.sum(S) / var_X
+
+    if abs(scale - 1.0) > 0.02:
+        logger.warning("Suspicious scale estimate, falling back to rigid transform.")
+        scale = 1.0
+    
+    # Translation
+    t = centroid_2 - scale * R @ centroid_1
+
+    # Build similarity transform
+    H_sim = np.eye(3)
+    H_sim[:2, :2] = scale * R
+    H_sim[:2, 2] = t
+    
+    return H_sim
+
+
+def estimate_similarity_transform(im1, im2, im1_mask, im2_mask, im1_roi_mask, im2_roi_mask, feature_extractors, mode, flann_ratio, subset_flann, **kwargs):
+
+    # displacement values for motion estimation
+    dis = 0.0
+    if mode == "d":
+        dis = im1_mask.shape[0]
+    elif mode in ("l", "r"):
+        dis = im1_mask.shape[1]
+    shifting = (mode, dis)
+
+    extractor_to_features = {}
+    for fe_i in feature_extractors:
+
+        fe_func = None
+        if fe_i == 'sift':
+            fe_func = SIFT
+        elif fe_i == 'fast':
+            fe_func = FAST
+        elif fe_i == 'mser':
+            fe_func = MSER
+        
+        # 1) compute keypoints:         
+        kp1, dsp1, kp2, dsp2 = fe_func(im1, im2,
+                                       im1_mask=im1_roi_mask, im2_mask=im2_roi_mask)
+    
+        # 2) compute matches:
+        if subset_flann:
+            X1, X2 = flann_match_subset(kp1, dsp1, kp2, dsp2, ratio=flann_ratio, im1_mask=im1_mask, im2_mask=im2_mask, shifting=shifting, **kwargs)
+        
+        else:
+            X1, X2 = flann_match(kp1, dsp1, kp2, dsp2, ratio=flann_ratio, im1_mask=im1_mask, im2_mask=im2_mask, shifting=shifting, **kwargs)
+
+        extractor_to_features[fe_i] = (X1, X2)
+        
+    # combine features from all extractors & discard duplicates:
+    
+            
+    # 3) discard outliers:    
+    try:
+        # H_ransac, ok = RANSAC(X1.copy(), X2.copy(), thresh=3)
+        H_ransac, ok = cv2.estimateAffinePartial2D(X1.copy(), X2.copy(), ransacReprojThreshold=3)
+
+        ok = ok.astype(bool).ravel()
+        
+    except Exception as e:
+        logger.info(f"exception in RANSAC: {e}.\n.")
+        ok = [True for _ in X1]
+        return None, None, None, None
+
+    if kwargs and 'plot_kp_matches_ransac' in kwargs['kwargs'] and kwargs['kwargs']['plot_kp_matches_ransac']:
+
+        if mode == 'r':
+            plot_vertical = False
+        
+        elif mode == 'd':
+            plot_vertical = True
+        
+        im1, im2 = kwargs['kwargs']['im1_color'], kwargs['kwargs']['im2_color']
+            
+        draw_matches_helper(im1, X1[ok], im2, X2[ok],
+                            plot_vertical,
+                            "Keypoint matches after RANSAC.")
+
+    
+    logger.info(f"Inliers from RANSAC computation: {np.sum(ok)}")
+        
+    # 4) estimate similarity transform
+    H_sim = _similarity_transform(X1, X2, ok)
+
+    return H_sim, ok, X1, X2
+
