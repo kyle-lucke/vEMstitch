@@ -4,129 +4,10 @@ import cv2
 from collections import defaultdict
 import os
 
+from vis_utils import draw_keypoints, draw_matches_helper, draw_keypoint_subsets
+
 logger = logging.getLogger(__name__)
 
-COLORS = [(0, 0, 255), # Blue
-          (255, 0, 0), # Red
-          (0, 255, 0), # Green
-          (255, 0, 214) # Grey(ish)
-          ]
-
-def draw_matches_vertical(img1, kp1, img2, kp2, matches, draw_matched_kps=False):
-    """
-    Draws matches between two images, stacking them vertically.
-    """
-    h1, w1 = img1.shape[:2]
-    h2, w2 = img2.shape[:2]
-
-    # kp objects are mutable, so make copy here so the input
-    # parameters are not modified.
-    kp1 = kp1.copy()
-    kp2 = kp2.copy()
-    
-    # Create a new canvas with appropriate height and max width
-    vis = np.zeros((h1 + h2, max(w1, w2), 3), np.uint8)
-    
-    # Place images onto the new canvas
-    vis[:h1, :w1] = img1
-    vis[h1:, :w2] = img2
-    
-    # Adjust keypoint coordinates for the second image
-    # cv2.drawMatchesKnn expects kp2 to be based on the *original* image
-    # We need to adjust the 'matches' data to point to the correct vertical location
-    # Note: cv2.drawMatchesKnn actually handles the coordinate offset internally 
-    # when given two separate images and a single output canvas (which is not how we set this up).
-    # We need a custom drawing logic or use the original `drawMatches` which handles canvas creation.
-
-    # A simpler approach using drawMatches with a custom combined image
-    # This requires manually adjusting all matched keypoint coordinates in kp2
-    adjusted_kp2 = []
-    for kp in kp2:
-        kp.pt = (kp.pt[0], kp.pt[1] + h1)
-        adjusted_kp2.append(kp)
-
-    # Use a loop to draw lines manually on the combined image for better control
-    for match in matches:
-            p1 = tuple(map(int, kp1[match[0]].pt)) # queryIdx
-            p2 = tuple(map(int, adjusted_kp2[match[1]].pt)) # trainIdx
-            cv2.line(vis, p1, p2, (0, 255, 0), 1) # Green lines
-
-            if draw_matched_kps:
-                cv2.circle(vis, tuple(map(int, kp1[match[0]].pt)), 4, (0, 0, 255), 1)
-
-                cv2.circle(vis, tuple(map(int, adjusted_kp2[match[1]].pt)), 4, (0, 0, 255), 1)
-
-            
-    # Draw keypoints (optional)
-    if not draw_matched_kps:
-    
-        for kp in kp1:
-            cv2.circle(vis, tuple(map(int, kp.pt)), 4, (0, 0, 255), 1)
-            
-        for kp in adjusted_kp2:
-            cv2.circle(vis, tuple(map(int, kp.pt)), 4, (0, 0, 255), 1)
-        
-    return vis
-
-# for drawing after filter_isolate or filter_geometry
-def draw_matches_after_filter(img1, kp1, img2, kp2):
-    """
-    Draws matches between two images, stacking them vertically.
-    """
-    h1, w1 = img1.shape[:2]
-    h2, w2 = img2.shape[:2]
-    
-    # Create a new canvas with appropriate height and max width
-    vis = np.zeros((h1 + h2, max(w1, w2), 3), np.uint8)
-    
-    # Place images onto the new canvas
-    vis[:h1, :w1] = img1
-    vis[h1:, :w2] = img2
-    
-    # Adjust keypoint coordinates for the second image
-    # cv2.drawMatchesKnn expects kp2 to be based on the *original* image
-    # We need to adjust the 'matches' data to point to the correct vertical location
-    # Note: cv2.drawMatchesKnn actually handles the coordinate offset internally 
-    # when given two separate images and a single output canvas (which is not how we set this up).
-    # We need a custom drawing logic or use the original `drawMatches` which handles canvas creation.
-
-    # A simpler approach using drawMatches with a custom combined image
-    # This requires manually adjusting all matched keypoint coordinates in kp2
-    adjusted_kp2 = []
-    for kp in kp2:
-        kp = (kp[0], kp[1] + h1)
-        adjusted_kp2.append(kp)
-
-    adjusted_kp2 = np.float32(adjusted_kp2)
-        
-    # Use a loop to draw lines manually on the combined image for better control
-    for p1, p2 in zip(kp1, adjusted_kp2):
-            # p1 = tuple(map(int, kp1[match[0]].pt)) # queryIdx
-            p1 = tuple(p1.astype(int)) # queryIdx
-            
-            # p2 = tuple(map(int, adjusted_kp2[match[1]].pt)) # trainIdx
-            p2 = tuple(p2.astype(int)) # trainIdx
-            cv2.line(vis, p1, p2, (0, 255, 0), 1) # Green lines
-
-            # draw KPs
-            cv2.circle(vis, p1, 4, (0, 0, 255), 1)
-            cv2.circle(vis, p2, 4, (0, 0, 255), 1)
-        
-    return vis
-
-def draw_keypoints(img, kp, kp_color):
-
-    # # Create a new canvas with appropriate height and max width
-    # vis = np.zeros_like(img, np.uint8)
-
-    # vis[:, :] = img
-
-    # draw KPs
-    for p in kp:
-        cv2.circle(img, tuple(map(int, p.pt)), 4, kp_color, 1) 
-
-    return img
-        
 def generate_None_list(m, n):
     a = []
     for i in range(m):
@@ -145,53 +26,6 @@ def normalize_img(img):
 def unique(A):
     ar, idx = np.unique(A, return_index=True, axis=1)
     return ar, idx
-
-
-def appendimages(im1, im2, vertical=False):
-    if vertical:
-        col1 = im1.shape[1]
-        col2 = im2.shape[1]
-        if col1 < col2:
-            im1 = np.hstack((im1, np.zeros((im1.shape[0], col2 - col1))))
-        elif col1 > col2:
-            im2 = np.hstack((im2, np.zeros((im2.shape[0], col1 - col2))))
-        return np.concatenate((im1, im2), axis=0)
-    else:
-        rows1 = im1.shape[0]
-        rows2 = im2.shape[0]
-        if rows1 < rows2:
-            im1 = np.vstack((im1, np.zeros((rows2 - rows1, im1.shape[1]))))
-        elif rows1 > rows2:
-            im2 = np.vstack((im2, np.zeros((rows1 - rows2, im2.shape[1]))))
-        return np.concatenate((im1, im2), axis=1)
-
-
-def draw_matches(im1, im2, locs1, locs2, ok, vertical=False):
-    im3 = appendimages(im1, im2, vertical)
-    if vertical:
-        for i in range(locs1.shape[0]):
-            center1 = (int(round(locs1[i, 0])), int(round(locs1[i, 1])))
-            center2 = (int(round(locs2[i, 0])), int(round(locs2[i, 1]) + im1.shape[0]))
-            if ok[i] == 0:
-                cv2.circle(im3, center1, 3, (255, 0, 0), -1, cv2.LINE_AA)
-                cv2.circle(im3, center2, 3, (255, 0, 0), -1, cv2.LINE_AA)
-            else:
-                cv2.circle(im3, center1, 3, (255, 0, 0), -1, cv2.LINE_AA)
-                cv2.circle(im3, center2, 3, (255, 0, 0), -1, cv2.LINE_AA)
-                cv2.line(im3, center1, center2, (255, 0, 0), 1, cv2.LINE_AA)
-    else:
-        for i in range(locs1.shape[0]):
-            center1 = (int(round(locs1[i, 0])), int(round(locs1[i, 1])))
-            center2 = (int(round(locs2[i, 0] + im1.shape[1])), int(round(locs2[i, 1])))
-            if ok[i] == 0:
-                cv2.circle(im3, center1, 3, (255, 0, 0), -1, cv2.LINE_AA)
-                cv2.circle(im3, center2, 3, (255, 0, 0), -1, cv2.LINE_AA)
-            else:
-                cv2.circle(im3, center1, 3, (255, 0, 0), -1, cv2.LINE_AA)
-                cv2.circle(im3, center2, 3, (255, 0, 0), -1, cv2.LINE_AA)
-                cv2.line(im3, center1, center2, (255, 0, 0), 1, cv2.LINE_AA)
-    return im3
-
 
 # drop-in adaptive replacement for filter_isolate 
 # TODO: see if this improves things?
@@ -630,6 +464,11 @@ def rigidity_cons(x, y, x_, y_):
 
 def SIFT(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ksize=5):
 
+    # clahe = cv2.createCLAHE(tileGridSize=(4,4))
+    
+    # im1 = clahe.apply(im1)
+    # im2 = clahe.apply(im2)
+    
     if filtering == 'sharpen':
         # Create the sharpening kernel
         kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
@@ -650,10 +489,6 @@ def SIFT(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ks
         im1 = cv2.addWeighted(im1, 1.5, im1_gb, -0.5, 0)
         im2 = cv2.addWeighted(im2, 1.5, im2_gb, -0.5, 0)
 
-    # clahe = cv2.createCLAHE(tileGridSize=(8,8))
-    
-    # im1 = clahe.apply(im1)
-    # im2 = clahe.apply(im2)
         
     sift = cv2.SIFT_create()
 
@@ -669,6 +504,8 @@ def flann_match(kp1, dsp1, kp2, dsp2, ratio=0.4, im1_mask=None, im2_mask=None, s
     trainIdx: index of target keypoint
     distance: Euclidean distance
     """
+
+    mode, _ = shifting
     
     FLANN_INDEX_KDTREE = 1
     index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
@@ -701,28 +538,17 @@ def flann_match(kp1, dsp1, kp2, dsp2, ratio=0.4, im1_mask=None, im2_mask=None, s
     # DEBUG: plot good KPs that pass the ratio test
     if kwargs and 'plot_kp_matches' in kwargs['kwargs'] and kwargs['kwargs']['plot_kp_matches']:
 
+        if mode == 'r':
+            plot_vertical = False
+        
+        elif mode == 'd':
+            plot_vertical = True
+        
         im1, im2 = kwargs['kwargs']['im1_color'], kwargs['kwargs']['im2_color']
-        
-        if kwargs['kwargs']['plot_kp_vertical']:
 
-            matched_im = draw_matches_vertical(im1, kp1, im2, kp2, good)
-            
-        else:        
-            matched_im = cv2.drawMatchesKnn(im1, kp1, im2, kp2, matches,
-                                            outImg=None, matchesMask=good_matches,
-                                            matchColor=(0,255,0),
-                                            singlePointColor=(0,255,255),
-                                            flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS)
-
-        import matplotlib.pyplot as plt
-        plt.imshow(matched_im)
-        plt.axis('off')
-        
-        mng = plt.get_current_fig_manager()
-        mng.resize(*mng.window.maxsize())
-
-        plt.tight_layout()
-        plt.show()
+        draw_matches_helper(im1, srcdsp, im2, tgtdsp,
+                            plot_verical,
+                            "Keypoint matches after ratio test.")
 
     kp_length = len(srcdsp)
     if kp_length <= 2:
@@ -745,38 +571,22 @@ def flann_match(kp1, dsp1, kp2, dsp2, ratio=0.4, im1_mask=None, im2_mask=None, s
 
     if kwargs and 'plot_kp_matches' in kwargs['kwargs'] and kwargs['kwargs']['plot_kp_matches']:
 
+        if mode == 'r':
+            plot_vertical = False
+        
+        elif mode == 'd':
+            plot_vertical = True
+        
         im1, im2 = kwargs['kwargs']['im1_color'], kwargs['kwargs']['im2_color']
         
-        if kwargs['kwargs']['plot_kp_vertical']:
-            matched_im = draw_matches_after_filter(im1, srcdsp, im2, tgtdsp)
-            
-        else:
-            logger.info('Drawing horizontal KP matches after filtering not currently implemented')
-            # matched_im = cv2.drawMatchesKnn(im1, kp1, im2, kp2, matches,
-            #                                 outImg=None, matchesMask=good_matches,
-            #                                 matchColor=(0,255,0),
-            #                                 singlePointColor=(0,255,255),
-            #                                 flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS)
-
-        import matplotlib.pyplot as plt
-        plt.imshow(matched_im)
-        plt.axis('off')
-        
-        mng = plt.get_current_fig_manager()
-        mng.resize(*mng.window.maxsize())
-
-        plt.tight_layout()
-        plt.show()
+        draw_matches_helper(im1, srcdsp, im2, tgtdsp,
+                            plot_vertical,
+                            "Keypoint matches after isolation and geometry filtering.")
     
     return srcdsp, tgtdsp
 
-def _generate_spatial_subsets(kp, dsp, n_subsets, im_axis_shape, mode):
-
-    if mode == 'r':
-        axis_index = 1
-    elif mode == 'd':
-        axis_index = 0
-    
+def _generate_spatial_subsets(kp, dsp, n_subsets, im_axis_shape, axis_index):
+        
     # convert to numpy for fast vectorized subsetting
     kp_np = np.float32([kp_i.pt for kp_i in kp])
 
@@ -784,9 +594,6 @@ def _generate_spatial_subsets(kp, dsp, n_subsets, im_axis_shape, mode):
     # respectively.
     subset_width = im_axis_shape // n_subsets
     subset_axis_points = np.arange(0, im_axis_shape + subset_width, im_axis_shape // n_subsets)
-    # print(f"subset y points: {subset_x_points}")
-
-    # print(len(kp_np))
     
     subset_idxs = []
     for i in range(len(subset_axis_points)-1):
@@ -802,13 +609,10 @@ def _generate_spatial_subsets(kp, dsp, n_subsets, im_axis_shape, mode):
         
         current_subset_idxs = np.where(condition)[0]
         subset_idxs.append(current_subset_idxs)
-        
-        # print(current_subset_idxs)
-        
-        # print(f"range: [{subset_axis_points[i]}, {subset_axis_points[i+1]}]")
 
     assert sum([len(s) for s in subset_idxs]) == len(kp), f"ERROR: number of subset indices and KPs not equal."
 
+    # Select KPs & DSPs from the inputs 
     subset_kps = []
     subset_dsps = []
     for s in subset_idxs:
@@ -817,84 +621,47 @@ def _generate_spatial_subsets(kp, dsp, n_subsets, im_axis_shape, mode):
 
     return subset_kps, subset_dsps
 
-# [ ] TODO: generalize this to vertical + horizontal stitching by
-#     modifying _generate_spatial_subsets accordingly.
-
 # [ ] TODO: refactor into single function w/ flann_match
-def flann_match_subset(kp1, dsp1, kp2, dsp2, mode, ratio=0.4, n_subsets=8, im1_mask=None, im2_mask=None, shifting=None, **kwargs):
+def flann_match_subset(kp1, dsp1, kp2, dsp2, ratio=0.4, n_subsets=8, im1_mask=None, im2_mask=None, shifting=None, **kwargs):
     """
     return DMatch (queryIdx, trainIdx, distance)
     queryIdx: index of query keypoint
     trainIdx: index of target keypoint
     distance: Euclidean distance
     """
-
-    if mode == 'r':
+    
+    mode, _ = shifting
+    
+    if mode == 'r': # horizontal
         im1_axis_shape = kwargs['kwargs']['im1'].shape[0]
         im2_axis_shape = kwargs['kwargs']['im2'].shape[0]
+        axis_index = 1
         
-    elif mode == 'd':
+    elif mode == 'd': # vertical
         im1_axis_shape = kwargs['kwargs']['im1'].shape[1]
         im2_axis_shape = kwargs['kwargs']['im2'].shape[1]
-        
+        axis_index = 0
         
     # seperate KPs into subsets based on spatial position:
     kp1_subsets, dsp1_subsets = _generate_spatial_subsets(kp1, dsp1, n_subsets,
-                                                          im1_axis_shape, mode)
+                                                          im1_axis_shape, axis_index)
     
     kp2_subsets, dsp2_subsets = _generate_spatial_subsets(kp2, dsp2, n_subsets,
-                                                          im2_axis_shape, mode)
-    
-    # DEBUG: draw subset keypoints
-    im1_draw = kwargs['kwargs']['im1_color'].copy()
-    for i, kp_subset in enumerate(kp1_subsets):
-        im1_draw = draw_keypoints(im1_draw, kp_subset, COLORS[i % len(COLORS)])
-        
-    # import matplotlib.pyplot as plt
-    # plt.imshow(im1_draw)
-    # plt.axis('off')
-        
-    # mng = plt.get_current_fig_manager()
-    # mng.resize(*mng.window.maxsize())
+                                                          im2_axis_shape, axis_index)
 
-    # plt.tight_layout()
-    # plt.show()
-
-    im2_draw = kwargs['kwargs']['im2_color'].copy()
-    for i, kp_subset in enumerate(kp2_subsets):
-        im2_draw = draw_keypoints(im2_draw, kp_subset, COLORS[i % len(COLORS)])
-
-    if mode == 'r':
+    # DEBUG: plot good KPs that pass the ratio test
+    if kwargs and 'plot_kps' in kwargs['kwargs'] and kwargs['kwargs']['plot_kps']:
         
-        # combine images:
-        im_draw_combined = np.zeros((im1_draw.shape[0], im1_draw.shape[1] + im2_draw.shape[1], 3), dtype=np.uint8)
+        if mode == 'r':
+            plot_vertical = False
         
-        im_draw_combined[:, :im1_draw.shape[1]] = im1_draw
-        im_draw_combined[:, im1_draw.shape[1]:] = im2_draw
+        elif mode == 'd':
+            plot_vertical = True
 
-    elif mode == 'd':
-
-        # combine images:
-        im_draw_combined = np.zeros((im1_draw.shape[0] + im2_draw.shape[0] , im1_draw.shape[1], 3), dtype=np.uint8)
+        im1, im2 = kwargs['kwargs']['im1_color'], kwargs['kwargs']['im2_color']
+            
+        draw_keypoint_subsets(im1, kp1_subsets, im2, kp2_subsets, plot_vertical)
         
-        im_draw_combined[:im1_draw.shape[0]] = im1_draw
-        im_draw_combined[im1_draw.shape[1]:] = im2_draw
-        
-    else:
-        raise ValueError(f"Unrecognized mode: {mode}")
-    
-    import matplotlib.pyplot as plt
-    plt.imshow(im_draw_combined)
-    plt.axis('off')
-        
-    mng = plt.get_current_fig_manager()
-    mng.resize(*mng.window.maxsize())
-
-    plt.tight_layout()
-    plt.show()
-    
-    exit()
-    
     FLANN_INDEX_KDTREE = 1
     index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
     search_params = dict(checks=50)
@@ -906,7 +673,7 @@ def flann_match_subset(kp1, dsp1, kp2, dsp2, mode, ratio=0.4, n_subsets=8, im1_m
     
     for i in range(n_subsets):
 
-        logger.info(f"Subset {i+1} / {n_subsets})")
+        logger.info(f"Subset: {i+1} / {n_subsets}")
         
         kp1_subset = kp1_subsets[i] 
         dsp1_subset = dsp1_subsets[i]
@@ -938,62 +705,27 @@ def flann_match_subset(kp1, dsp1, kp2, dsp2, mode, ratio=0.4, n_subsets=8, im1_m
                     good.append([m.queryIdx, m.trainIdx])
                     good_matches[j] = [1, 0]    
 
+        # TODO: rename srcdsp / tgtdsp to srckp / tgtkp
         srcdsp_subset = np.float32([kp1_subset[m[0]].pt for m in good])
         tgtdsp_subset = np.float32([kp2_subset[m[1]].pt for m in good])
-
-        # if len(srcdsp_subset) > 0 and len(tgtdsp_subset) > 0: 
-        
-        #     srcdsp.append(srcdsp_subset)
-        #     tgtdsp.append(tgtdsp_subset)
 
         logger.info(f"Matches after ratio test: {len(good)}")
 
         # DEBUG: plot good KPs that pass the ratio test
         if kwargs and 'plot_kp_matches' in kwargs['kwargs'] and kwargs['kwargs']['plot_kp_matches']:
-
+            
+            if mode == 'r':
+                plot_vertical = False
+        
+            elif mode == 'd':
+                plot_vertical = True
+            
             im1, im2 = kwargs['kwargs']['im1_color'], kwargs['kwargs']['im2_color']
-        
-            if kwargs['kwargs']['plot_kp_vertical']:
 
-                matched_im = draw_matches_vertical(im1, kp1_subset, im2, kp2_subset, good, draw_matched_kps=True)
-            
-            else:        
-                matched_im = cv2.drawMatchesKnn(im1, kp1_subset, im2, kp2_subset, matches,
-                                                outImg=None, matchesMask=good_matches,
-                                                matchColor=(0,255,0),
-                                                singlePointColor=(0,255,255),
-                                                
-                                                # flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS
-                                                )
-
-        
-                
-            import matplotlib.pyplot as plt
-            plt.imshow(matched_im)
-            plt.axis('off')
-        
-            mng = plt.get_current_fig_manager()
-            mng.resize(*mng.window.maxsize())
-
-            plt.tight_layout()
-            plt.show()
-
-        # srcdsp = np.vstack(srcdsp)
-        # tgtdsp = np.vstack(tgtdsp)
-
-        # logger.info(f"Matches after ratio test over all subsets: {len(srcdsp_subset)}")
-    
-        # print(srcdsp.shape)
-    
-        # exit()
-            
-        # kp_length = len(srcdsp)
-        # if kp_length <= 2:
-        #     logger.info("feature number = %d" % len(srcdsp))
-        #     if len(srcdsp) == 1:
-        #         return [], []
-        #     return srcdsp, tgtdsp
-
+            draw_matches_helper(im1, srcdsp_subset, im2, tgtdsp_subset,
+                                plot_vertical,
+                                f"Keypoint matches after ratio test (subset {i+1} / {n_subsets}).")
+          
         if len(srcdsp_subset) == 0:
             continue
         
@@ -1013,37 +745,39 @@ def flann_match_subset(kp1, dsp1, kp2, dsp2, mode, ratio=0.4, n_subsets=8, im1_m
         
             srcdsp.append(srcdsp_subset)
             tgtdsp.append(tgtdsp_subset)
-
         
         if kwargs and 'plot_kp_matches' in kwargs['kwargs'] and kwargs['kwargs']['plot_kp_matches']:
 
-            im1, im2 = kwargs['kwargs']['im1_color'], kwargs['kwargs']['im2_color']
+            if mode == 'r':
+                plot_vertical = False
         
-            if kwargs['kwargs']['plot_kp_vertical']:
-                matched_im = draw_matches_after_filter(im1, srcdsp_subset, im2, tgtdsp_subset)
+            elif mode == 'd':
+                plot_vertical = True
             
-            else:
-                logger.info('Drawing horizontal KP matches after filtering not currently implemented')
-                # matched_im = cv2.drawMatchesKnn(im1, kp1, im2, kp2, matches,
-                #                                 outImg=None, matchesMask=good_matches,
-                #                                 matchColor=(0,255,0),
-                #                                 singlePointColor=(0,255,255),
-                #                                 flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS)
+            im1, im2 = kwargs['kwargs']['im1_color'], kwargs['kwargs']['im2_color']
 
-            import matplotlib.pyplot as plt
-            plt.imshow(matched_im)
-            plt.axis('off')
-        
-            mng = plt.get_current_fig_manager()
-            mng.resize(*mng.window.maxsize())
-
-            plt.tight_layout()
-            plt.show()
+            draw_matches_helper(im1, srcdsp_subset, im2, tgtdsp_subset,
+                                plot_vertical,
+                                "Keypoint matches after isolation and geometry filtering.")
 
     srcdsp = np.vstack(srcdsp)
     tgtdsp = np.vstack(tgtdsp)
-
+    
     logger.info(f"Filtered matches over all subsets: {len(srcdsp)}")
+
+    if kwargs and 'plot_kp_matches' in kwargs['kwargs'] and kwargs['kwargs']['plot_kp_matches']:
+
+        if mode == 'r':
+            plot_vertical = False
+        
+        elif mode == 'd':
+            plot_vertical = True
+        
+        im1, im2 = kwargs['kwargs']['im1_color'], kwargs['kwargs']['im2_color']
+
+        draw_matches_helper(im1, srcdsp, im2, tgtdsp,
+                            plot_vertical,
+                            "Final keypoint matches.")
     
     kp_length = len(srcdsp)
     if kp_length <= 2:
