@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from Utils import loG, filter_geometry, SIFT, normalize_img, draw_matches
+from Utils import loG, filter_geometry, SIFT, normalize_img
 from collections import defaultdict
 from rigid_transform import RANSAC
 from elastic_transform import local_TPS
