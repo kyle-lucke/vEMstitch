@@ -1,10 +1,12 @@
 import random
 import logging
 
+import cv2
 import numpy as np
 from scipy import linalg
 
 from Utils import flann_match, flann_match_subset, generate_None_list, rigidity_cons
+from vis_utils import draw_matches_helper
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +36,7 @@ def normalize_points(pts):
 
     return pts_norm_h[:, :2], T
 
-
+# TODO: rewrite to only estimate similiarity matrix
 def dlt_homography(ps1, ps2):
     """
     Normalized DLT homography estimation.
@@ -80,11 +82,10 @@ def RANSAC(ps1, ps2, num_iter=2000, thresh=3.0):
     """
     n = ps1.shape[0]
     if n < 4:
-        raise ValueError("Need at least 4 point correspondences")
+        raise ValueError("Need at least 4 point correspondences for RANSAC")
 
     best_inliers = None
     best_count = 0
-    best_H = None
 
     ps1_h = np.hstack([ps1, np.ones((n, 1))])
 
@@ -118,8 +119,7 @@ def RANSAC(ps1, ps2, num_iter=2000, thresh=3.0):
         if count > best_count:
             best_count = count
             best_inliers = inliers
-            best_H = H
-
+            
     # Recompute homography using all inliers
     if best_inliers is None or best_count < 4:
         raise RuntimeError("RANSAC failed to find a valid homography")
@@ -297,7 +297,7 @@ def similarity_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_r
     shifting = (mode, dis)
 
     if subset_flann:
-        X1, X2 = flann_match_subset(kp1, dsp1, kp2, dsp2, mode, ratio=flann_ratio, im1_mask=im1_mask, im2_mask=im2_mask, shifting=shifting, **kwargs)
+        X1, X2 = flann_match_subset(kp1, dsp1, kp2, dsp2, ratio=flann_ratio, im1_mask=im1_mask, im2_mask=im2_mask, shifting=shifting, **kwargs)
         
     else:
         X1, X2 = flann_match(kp1, dsp1, kp2, dsp2, ratio=flann_ratio, im1_mask=im1_mask, im2_mask=im2_mask, shifting=shifting, **kwargs)
@@ -308,7 +308,12 @@ def similarity_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_r
         return None, None, None, None
 
     try:
-        H_ransac, ok = RANSAC(X1.copy(), X2.copy(), thresh=4)
+        # H_ransac, ok = RANSAC(X1.copy(), X2.copy(), thresh=3)
+        H_ransac, ok = cv2.estimateAffinePartial2D(X1.copy(), X2.copy(), ransacReprojThreshold=3)
+
+        ok = ok.astype(bool).ravel()
+        # print(X1[ok])
+        
     except Exception as e:
         logger.info(f"exception in RANSAC: {e}.\nFalling back to fast_brief routine.")
         ok = [True for _ in X1]
@@ -316,6 +321,23 @@ def similarity_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_r
 
     logger.info(f"Inliers from RANSAC computation: {np.sum(ok)}")
 
+    # print(ok[:10])
+    # exit()
+    
+    if kwargs and 'plot_kp_matches_ransac' in kwargs['kwargs'] and kwargs['kwargs']['plot_kp_matches_ransac']:
+
+        if mode == 'r':
+            plot_vertical = False
+        
+        elif mode == 'd':
+            plot_vertical = True
+        
+        im1, im2 = kwargs['kwargs']['im1_color'], kwargs['kwargs']['im2_color']
+            
+        draw_matches_helper(im1, X1[ok], im2, X2[ok],
+                            plot_vertical,
+                            "Keypoint matches after RANSAC.")
+    
     # X1, X2 represent the matched keypoint from the source and target
     # images, respectively.
     point_num = X1.shape[0]
@@ -355,7 +377,7 @@ def similarity_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask, mode, flann_r
     # Translation
     t = centroid_2 - scale * R @ centroid_1
 
-    # Build homogeneous transform
+    # Build similarity transform
     H_sim = np.eye(3)
     H_sim[:2, :2] = scale * R
     H_sim[:2, 2] = t
