@@ -515,14 +515,14 @@ def FAST(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ks
     im1 = filter_image(im1, filtering, mb_ksize)
     im2 = filter_image(im2, filtering, mb_ksize)
         
-    sift = cv2.FAST_create()
+    fast = cv2.FAST_create()
 
-    kp1, dsp1 = sift.detectAndCompute(im1, im1_mask)
-    kp2, dsp2 = sift.detectAndCompute(im2, im2_mask)
+    kp1, dsp1 = fast.detectAndCompute(im1, im1_mask)
+    kp2, dsp2 = fast.detectAndCompute(im2, im2_mask)
     
     return kp1, dsp1, kp2, dsp2
 
-def _generate_mser_kp_and_dsp(regions):
+def _generate_mser_kp_and_dsp(image, regions):
 
     # 2. Convert MSER regions to KeyPoint objects
     # MSER regions are lists of points. We can approximate keypoints from their centroids or bounding boxes.
@@ -544,11 +544,12 @@ def _generate_mser_kp_and_dsp(regions):
     sift = cv2.SIFT_create()
 
     # 4. Compute descriptors for the detected keypoints
-    keypoints, descriptors = sift.compute(gray, keypoints)
+    keypoints, descriptors = sift.compute(image, keypoints)
 
     return keypoints, descriptors
     
 
+# TODO: restrict based on im*_mask
 def MSER(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ksize=5):
 
     # clahe = cv2.createCLAHE(tileGridSize=(4,4))
@@ -561,29 +562,13 @@ def MSER(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ks
         
     # 1. Detect MSER regions
     mser = cv2.MSER_create()
-    regions, _ = mser.detectRegions(gray)
-
+    regions1, _ = mser.detectRegions(im1)
+    regions2, _ = mser.detectRegions(im2)
+        
     # 2. Convert MSER regions to KeyPoint objects
     # MSER regions are lists of points. We can approximate keypoints from their centroids or bounding boxes.
-    keypoints = []
-    for region in regions:
-        # Calculate centroid
-        moments = cv2.moments(region)
-        if moments['m00'] != 0:
-            x = int(moments['m10'] / moments['m00'])
-            y = int(moments['m01'] / moments['m00'])
-            # Approximate size (e.g., using area's square root) and angle (not directly available from MSER region points)
-            area = cv2.contourArea(region)
-            size = np.sqrt(area) if area > 0 else 1.0 # Avoid zero size
-            # Create KeyPoint object. Angle and octave are approximations.
-            keypoints.append(cv2.KeyPoint(x, y, size))
-
-        # 3. Initialize a descriptor extractor (e.g., SIFT, which is robust)
-            # Note: SIFT might be in the opencv-contrib-python package (cv2.xfeatures2d.SIFT_create())
-    sift = cv2.SIFT_create()
-
-    # 4. Compute descriptors for the detected keypoints
-    keypoints, descriptors = sift.compute(gray, keypoints)
+    kp1, dsp1 = _generate_mser_kp_and_dsp(im1, regions1)
+    kp1, dsp2 = _generate_mser_kp_and_dsp(im2, regions2)
     
     return kp1, dsp1, kp2, dsp2
 
