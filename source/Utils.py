@@ -4,7 +4,7 @@ import cv2
 from collections import defaultdict
 import os
 
-from vis_utils import draw_keypoints, draw_matches_helper, draw_keypoint_subsets, plot_single_image
+from .vis_utils import draw_keypoints, draw_matches_helper, draw_keypoint_subsets, plot_single_image
 
 logger = logging.getLogger(__name__)
 
