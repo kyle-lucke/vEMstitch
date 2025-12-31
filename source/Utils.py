@@ -4,9 +4,12 @@ import cv2
 from collections import defaultdict
 import os
 
-from vis_utils import draw_keypoints, draw_matches_helper, draw_keypoint_subsets
+from vis_utils import draw_keypoints, draw_matches_helper, draw_keypoint_subsets, plot_single_image
 
 logger = logging.getLogger(__name__)
+
+FLANN_INDEX_KD_TREE = 1
+FLANN_INDEX_LSH = 6
 
 def generate_None_list(m, n):
     a = []
@@ -462,6 +465,32 @@ def rigidity_cons(x, y, x_, y_):
             break
     return flag
 
+def filter_image(image, filtering, mb_ksize):
+    
+    if filtering == 'sharpen':
+        # Create the sharpening kernel
+        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+
+        # Sharpen the image
+        image = cv2.filter2D(image, -1, kernel)
+            
+    elif filtering == 'median':
+        image = cv2.medianBlur(image, mb_ksize)
+
+    elif filtering == 'add_weighted':
+
+        image_gb = cv2.GaussianBlur(image, (3,3),0)
+        image = cv2.addWeighted(image, 1.5, image_gb, -0.5, 0)
+
+    # no filtering
+    elif filtering =='' or filtering is None:
+        pass
+        
+    else:
+        raise ValueError(f'Usupported filtering type: {filtering}')
+
+    return image
+
 def SIFT(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ksize=5):
 
     # clahe = cv2.createCLAHE(tileGridSize=(4,4))
@@ -469,26 +498,8 @@ def SIFT(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ks
     # im1 = clahe.apply(im1)
     # im2 = clahe.apply(im2)
     
-    if filtering == 'sharpen':
-        # Create the sharpening kernel
-        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-
-        # Sharpen the image
-        im1 = cv2.filter2D(im1, -1, kernel)
-        im2 = cv2.filter2D(im2, -1, kernel)
-            
-    elif filtering == 'median':
-        im1 = cv2.medianBlur(im1, mb_ksize)
-        im2 = cv2.medianBlur(im2, mb_ksize)
-
-    elif filtering == 'add_weighted':
-
-        im1_gb = cv2.GaussianBlur(im1, (3,3),0)
-        im2_gb = cv2.GaussianBlur(im2, (3,3),0)
-
-        im1 = cv2.addWeighted(im1, 1.5, im1_gb, -0.5, 0)
-        im2 = cv2.addWeighted(im2, 1.5, im2_gb, -0.5, 0)
-
+    im1 = filter_image(im1, filtering, mb_ksize)
+    im2 = filter_image(im2, filtering, mb_ksize)
         
     sift = cv2.SIFT_create()
 
@@ -496,6 +507,135 @@ def SIFT(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ks
     kp2, dsp2 = sift.detectAndCompute(im2, im2_mask)
     
     return kp1, dsp1, kp2, dsp2
+
+
+def KAZE(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ksize=5):
+
+    # clahe = cv2.createCLAHE(tileGridSize=(4,4))
+    
+    # im1 = clahe.apply(im1)
+    # im2 = clahe.apply(im2)
+    
+    im1 = filter_image(im1, filtering, mb_ksize)
+    im2 = filter_image(im2, filtering, mb_ksize)
+        
+    sift = cv2.KAZE_create()
+
+    kp1, dsp1 = sift.detectAndCompute(im1, im1_mask)
+    kp2, dsp2 = sift.detectAndCompute(im2, im2_mask)
+    
+    return kp1, dsp1, kp2, dsp2
+
+
+def ORB(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ksize=5):
+
+    # clahe = cv2.createCLAHE(tileGridSize=(4,4))
+    
+    # im1 = clahe.apply(im1)
+    # im2 = clahe.apply(im2)
+    
+    im1 = filter_image(im1, filtering, mb_ksize)
+    im2 = filter_image(im2, filtering, mb_ksize)
+        
+    orb = cv2.ORB_create()
+
+    kp1, dsp1 = orb.detectAndCompute(im1, im1_mask)
+    kp2, dsp2 = orb.detectAndCompute(im2, im2_mask)
+    
+    return kp1, dsp1, kp2, dsp2
+
+def FREAK(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ksize=5):
+
+    im1 = filter_image(im1, filtering, mb_ksize)
+    im2 = filter_image(im2, filtering, mb_ksize)
+
+    star = cv2.xfeatures2d.StarDetector_create()
+
+    freak = cv2.xfeatures2d.FREAK_create()
+
+    kp1 = star.detect(im1, im1_mask)
+    kp2 = star.detect(im2, im2_mask)
+
+    kp1, dsp1 = freak.compute(im1, kp1)
+    kp2, dsp2 = freak.compute(im2, kp2)
+
+    return kp1, dsp1, kp2, dsp2
+    
+
+def _generate_mser_kp_and_dsp(image, regions, roi_mask=None):
+
+    # Convert MSER regions to KeyPoint objects
+    
+    # MSER regions are lists of points. We can approximate keypoints
+    # from their centroids or bounding boxes.
+    keypoints = []
+    for region in regions:
+        # Calculate centroid
+        moments = cv2.moments(region)
+        if moments['m00'] != 0:
+            x = int(moments['m10'] / moments['m00'])
+            y = int(moments['m01'] / moments['m00'])
+            # Approximate size (e.g., using area's square root) and
+            # angle (not directly available from MSER region points)
+            area = cv2.contourArea(region)
+            size = np.sqrt(area) if area > 0 else 1.0 # Avoid zero size
+            # Create KeyPoint object. Angle and octave are approximations.
+            keypoints.append(cv2.KeyPoint(x, y, size))
+
+    # Initialize a descriptor extractor (e.g., SIFT, which is
+    # robust)
+    sift = cv2.SIFT_create()
+    
+    # Compute descriptors for the detected keypoints
+    keypoints, descriptors = sift.compute(image, keypoints)
+
+    # im_draw = draw_keypoints(image, keypoints, (0, 0, 255))
+    # plot_single_image(im_draw)
+    # exit()
+    
+    # filter keypoints based on mask
+    if roi_mask is not None:
+        filtered_kps = []
+
+        for kp in keypoints:
+            kp_x, kp_y = tuple(map(int, kp.pt))
+
+            # skip out of bounds KPs (not sure why this happens)
+            if kp_y >= roi_mask.shape[0] or kp_x >= roi_mask.shape[1] or kp_y < 0 or kp_x < 0:
+                continue
+            
+            if roi_mask[int(kp_y), int(kp_x)]:
+                filtered_kps.append(kp)
+
+        keypoints = tuple(filtered_kps)
+            
+    return keypoints, descriptors
+    
+
+# TODO: restrict based on im*_mask
+def MSER(im1, im2, im1_mask=None, im2_mask=None, filtering='add_weighted', mb_ksize=5):
+
+    # clahe = cv2.createCLAHE(tileGridSize=(4,4))
+    
+    # im1 = clahe.apply(im1)
+    # im2 = clahe.apply(im2)
+    
+    im1 = filter_image(im1, filtering, mb_ksize)
+    im2 = filter_image(im2, filtering, mb_ksize)
+        
+    # Detect MSER regions
+    mser = cv2.MSER_create()
+    regions1, _ = mser.detectRegions(im1)
+    regions2, _ = mser.detectRegions(im2)
+        
+    # Convert MSER regions to KeyPoint objects
+    # MSER regions are lists of points. We can approximate keypoints
+    # from their centroids or bounding boxes.
+    kp1, dsp1 = _generate_mser_kp_and_dsp(im1, regions1, im1_mask)
+    kp2, dsp2 = _generate_mser_kp_and_dsp(im2, regions2, im2_mask)
+    
+    return kp1, dsp1, kp2, dsp2
+
 
 def flann_match(kp1, dsp1, kp2, dsp2, ratio=0.4, im1_mask=None, im2_mask=None, shifting=None, **kwargs):
     """
@@ -550,12 +690,12 @@ def flann_match(kp1, dsp1, kp2, dsp2, ratio=0.4, im1_mask=None, im2_mask=None, s
                             plot_verical,
                             "Keypoint matches after ratio test.")
 
-    kp_length = len(srcdsp)
-    if kp_length <= 2:
-        logger.info("feature number = %d" % len(srcdsp))
-        if len(srcdsp) == 1:
-            return [], []
-        return srcdsp, tgtdsp
+    # kp_length = len(srcdsp)
+    # if kp_length <= 2:
+    #     logger.info("feature number = %d" % len(srcdsp))
+    #     if len(srcdsp) == 1:
+    #         return [], []
+    #     return srcdsp, tgtdsp
 
     _, index = np.unique(srcdsp[:, 0], return_index=True)
     srcdsp = srcdsp[np.sort(index), :]
@@ -610,6 +750,7 @@ def _generate_spatial_subsets(kp, dsp, n_subsets, im_axis_shape, axis_index):
         current_subset_idxs = np.where(condition)[0]
         subset_idxs.append(current_subset_idxs)
 
+    # FIXME: breaks for MSER, think there may be an issue w/ the keypoint generation??
     assert sum([len(s) for s in subset_idxs]) == len(kp), f"ERROR: number of subset indices and KPs not equal."
 
     # Select KPs & DSPs from the inputs 
@@ -622,13 +763,32 @@ def _generate_spatial_subsets(kp, dsp, n_subsets, im_axis_shape, axis_index):
     return subset_kps, subset_dsps
 
 # [ ] TODO: refactor into single function w/ flann_match
-def flann_match_subset(kp1, dsp1, kp2, dsp2, ratio=0.4, n_subsets=8, im1_mask=None, im2_mask=None, shifting=None, **kwargs):
+def flann_match_subset(kp1, dsp1, kp2, dsp2, dsp_type='float', ratio=0.4, n_subsets=8, im1_mask=None, im2_mask=None, shifting=None, **kwargs):
     """
     return DMatch (queryIdx, trainIdx, distance)
     queryIdx: index of query keypoint
     trainIdx: index of target keypoint
     distance: Euclidean distance
     """
+
+    if dsp_type == 'float':
+        # norm = cv2.NORM_L2
+        flann_index_params = dict(algorithm=FLANN_INDEX_KD_TREE, trees=5)
+        flann_search_params = dict(checks=50)
+        
+    elif dsp_type == 'binary':
+        # norm = cv2.NORM_HAMMING
+        flann_index_params = dict(algorithm=FLANN_INDEX_LSH,
+                                  table_number=6,
+                                  key_size=12,
+                                  multi_probe_level=1)
+        
+        flann_search_params = dict()
+        
+    else:
+        raise ValueError(f"Expected dsp_type to either 'float' or 'binary' but is {dsp_type}")
+
+    
     
     mode, _ = shifting
     
@@ -662,11 +822,11 @@ def flann_match_subset(kp1, dsp1, kp2, dsp2, ratio=0.4, n_subsets=8, im1_mask=No
             
         draw_keypoint_subsets(im1, kp1_subsets, im2, kp2_subsets, plot_vertical)
         
-    FLANN_INDEX_KDTREE = 1
-    index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-    search_params = dict(checks=50)
+    # FLANN_INDEX_KDTREE = 1
+    # index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+    # search_params = dict(checks=50)
     
-    flann = cv2.FlannBasedMatcher(index_params, search_params)
+    flann = cv2.FlannBasedMatcher(flann_index_params, flann_search_params)
 
     srcdsp = [] 
     tgtdsp = []
@@ -693,7 +853,12 @@ def flann_match_subset(kp1, dsp1, kp2, dsp2, ratio=0.4, n_subsets=8, im1_mask=No
         good_matches = [[0, 0] for _ in range(len(matches))]
 
         logger.info(f"Overall matches: {len(matches)}")
-        for j, (m, n) in enumerate(matches):
+        for j, matched in enumerate(matches):
+            if len(matched) >= 2:
+                m, n  = matched
+            else:
+                continue
+            
             if m.distance < ratio * n.distance:
                 if im1_mask is not None and im2_mask is not None:
                     im1_x, im1_y = np.int32(np.round(kp1_subset[m.queryIdx].pt))
@@ -760,8 +925,8 @@ def flann_match_subset(kp1, dsp1, kp2, dsp2, ratio=0.4, n_subsets=8, im1_mask=No
                                 plot_vertical,
                                 "Keypoint matches after isolation and geometry filtering.")
 
-    srcdsp = np.vstack(srcdsp)
-    tgtdsp = np.vstack(tgtdsp)
+    srcdsp = np.vstack(srcdsp) if srcdsp else np.array([])
+    tgtdsp = np.vstack(tgtdsp) if tgtdsp else np.array([])
     
     logger.info(f"Filtered matches over all subsets: {len(srcdsp)}")
 
@@ -779,12 +944,12 @@ def flann_match_subset(kp1, dsp1, kp2, dsp2, ratio=0.4, n_subsets=8, im1_mask=No
                             plot_vertical,
                             "Final keypoint matches.")
     
-    kp_length = len(srcdsp)
-    if kp_length <= 2:
-        logger.info("feature number = %d" % len(srcdsp))
-        if len(srcdsp) == 1:
-            return [], []
-        return srcdsp, tgtdsp
+    # kp_length = len(srcdsp)
+    # if kp_length <= 2:
+    #     logger.info("feature number = %d" % len(srcdsp))
+    #     if len(srcdsp) == 1:
+    #         return [], []
+    #     return srcdsp, tgtdsp
     
     return srcdsp, tgtdsp
 

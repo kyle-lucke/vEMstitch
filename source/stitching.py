@@ -7,7 +7,7 @@ import numpy as np
 from Utils import SIFT, direct_stitch
 from vis_utils import post_process_image, plot_single_image
 from elastic_transform import local_TPS
-from rigid_transform import rigid_transform, similarity_transform
+from rigid_transform import rigid_transform, similarity_transform, estimate_similarity_transform
 from refinement import refinement_local
 
 import logging
@@ -23,9 +23,10 @@ SUBSET_FLANN_ROWS = True
 PLOT_KP_MATCHES_PAIR =False
 PLOT_KP_MATCHES_ROWS = False
 
-PLOT_KP_MATCHES_RANSAC_PAIR = True
-PLOT_KP_MATCHES_RANSAC_ROWS = True
+PLOT_KP_MATCHES_RANSAC_PAIR = False
+PLOT_KP_MATCHES_RANSAC_ROWS = False
 
+FEATURE_EXTRACTORS = ['sift', 'orb', 'freak']
 
 def stitching_pair(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, overlap=0.15, sift_mask_percent=0.1):
     
@@ -42,20 +43,40 @@ def stitching_pair(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, ove
     # plot_single_image(im1 * im1_sift_mask)
     # plot_single_image(im2 * im2_sift_mask)
     # exitt()
-    
-    kp1, dsp1, kp2, dsp2 = SIFT(im1, im2,
-                                im1_mask=im1_sift_mask, im2_mask=im2_sift_mask)
 
-    H, ok, X1, X2 = similarity_transform(kp1, dsp1, kp2, dsp2, im1_mask, im2_mask,
-                                         mode, flann_ratio=FLANN_RATIO_PAIR,
-                                         subset_flann=SUBSET_FLANN_PAIR,
-                                         kwargs={
-                                             'im1': im1, 'im2': im2,
-                                             'im1_color': im1_color,
-                                             'im2_color': im2_color,
-                                             'plot_kp_matches': PLOT_KP_MATCHES_PAIR,
-                                             'plot_kp_matches_ransac': PLOT_KP_MATCHES_RANSAC_PAIR
-                                         })
+    # kp1, kp2 = detect_and_match(im1, im2, im1_sift_mask, im2_sift_mask)
+        
+    # kp1, dsp1, kp2, dsp2 = SIFT(im1, im2,
+    #                             im1_mask=im1_sift_mask, im2_mask=im2_sift_mask)
+
+    # H, ok, X1, X2 = estimate_similarity_transform(
+    #     kp1, dsp1, kp2, dsp2, im1_mask, im2_mask,
+    #     mode, flann_ratio=FLANN_RATIO_PAIR,
+    #     subset_flann=SUBSET_FLANN_PAIR,
+    #     kwargs={
+    #         'im1': im1, 'im2': im2,
+    #         'im1_color': im1_color,
+    #         'im2_color': im2_color,
+    #         'plot_kp_matches': PLOT_KP_MATCHES_PAIR,
+    #         'plot_kp_matches_ransac': PLOT_KP_MATCHES_RANSAC_PAIR
+    #                                      }
+    # )
+
+    H, ok, X1, X2 = estimate_similarity_transform(
+        im1, im2,
+        im1_mask, im2_mask,
+        im1_sift_mask, im2_sift_mask,
+        FEATURE_EXTRACTORS, mode,
+        flann_ratio=FLANN_RATIO_PAIR,
+        subset_flann=SUBSET_FLANN_PAIR,
+        kwargs={
+            'im1': im1, 'im2': im2,
+            'im1_color': im1_color,
+            'im2_color': im2_color,
+            'plot_kp_matches': PLOT_KP_MATCHES_PAIR,
+            'plot_kp_matches_ransac': PLOT_KP_MATCHES_RANSAC_PAIR
+        }
+    )
     
     if H is None:
         raise RuntimeError("Error estimating similiarity matrix.")
@@ -82,22 +103,38 @@ def stitching_rows(im1, im2, im1_color, im2_color, im1_mask, im2_mask, mode, ref
     # plot_single_image(im1 * im1_sift_mask)
     # plot_single_image(im2 * im2_sift_mask)
     # exit()
+        
+    # kp1, dsp1, kp2, dsp2 = SIFT(im1, im2, im1_sift_mask, im2_sift_mask)
+
+    # H, ok, X1, X2 = similarity_transform(kp1, dsp1,
+    #                                      kp2, dsp2,
+    #                                      im1_mask, im2_mask, mode,
+    #                                      flann_ratio=FLANN_RATIO_ROWS,
+    #                                      subset_flann=SUBSET_FLANN_ROWS,
+    #                                      kwargs={
+    #                                          'im1': im1, 'im2': im2,
+    #                                          'im1_color': im1_color,
+    #                                          'im2_color': im2_color,
+    #                                          'plot_kp_matches': PLOT_KP_MATCHES_ROWS,
+    #                                          'plot_kp_matches_ransac': PLOT_KP_MATCHES_RANSAC_ROWS
+    #                                      })
+
+    H, ok, X1, X2 = estimate_similarity_transform(
+        im1, im2,
+        im1_mask, im2_mask,
+        im1_sift_mask, im2_sift_mask,
+        FEATURE_EXTRACTORS, mode,
+        flann_ratio=FLANN_RATIO_ROWS,
+        subset_flann=SUBSET_FLANN_ROWS,
+        kwargs={
+            'im1': im1, 'im2': im2,
+            'im1_color': im1_color,
+            'im2_color': im2_color,
+            'plot_kp_matches': PLOT_KP_MATCHES_ROWS,
+            'plot_kp_matches_ransac': PLOT_KP_MATCHES_RANSAC_ROWS
+        }
+    )
     
-    kp1, dsp1, kp2, dsp2 = SIFT(im1, im2, im1_sift_mask, im2_sift_mask)
-
-    H, ok, X1, X2 = similarity_transform(kp1, dsp1,
-                                         kp2, dsp2,
-                                         im1_mask, im2_mask, mode,
-                                         flann_ratio=FLANN_RATIO_ROWS,
-                                         subset_flann=SUBSET_FLANN_ROWS,
-                                         kwargs={
-                                             'im1': im1, 'im2': im2,
-                                             'im1_color': im1_color,
-                                             'im2_color': im2_color,
-                                             'plot_kp_matches': PLOT_KP_MATCHES_ROWS,
-                                             'plot_kp_matches_ransac': PLOT_KP_MATCHES_RANSAC_ROWS
-                                         })
-
     if H is None:
         raise RuntimeError("Error estimating similiarity matrix.")
     
@@ -263,12 +300,12 @@ def n_stitching(tile_grid, refine_flag=False):
         stitching_res = np.uint8(stitching_res)
 
         ### DEBUG ###
-        import matplotlib.pyplot as plt
-        plt.axis('off')
-        plt.title(f"row {row_number+1} -> {row_number+2}")
-        plt.imshow(post_process_image(stitching_res_color, cvt_color=False))
-        plt.tight_layout()
-        plt.show()
+        # import matplotlib.pyplot as plt
+        # plt.axis('off')
+        # plt.title(f"row {row_number+1} -> {row_number+2}")
+        # plt.imshow(post_process_image(stitching_res_color, cvt_color=False))
+        # plt.tight_layout()
+        # plt.show()
         # exit()
         ##############
         
