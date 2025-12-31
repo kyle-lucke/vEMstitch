@@ -1,12 +1,14 @@
 import cv2
 import numpy as np
-from Utils import unique
 from scipy import linalg
 from scipy.ndimage import map_coordinates
-from Utils import stitch_add_mask_linear_border, normalize_img, stitch_add_mask_linear_per_border
 from matplotlib import pyplot as plt
 
+from .Utils import unique
+from .Utils import stitch_add_mask_linear_border, normalize_img, stitch_add_mask_linear_per_border
+
 EPS = 1e-12
+TIKHONOV_REG = 1e-4
 
 def build_mosaic_canvas(im1, im2, H):
     box1 = np.array([
@@ -418,7 +420,9 @@ def local_TPS(
     mosaich = len(vr)
 
     # align the sub coordinates with the mosaic coordinates
-    margin = 0.1 * min(imsize1[0], imsize1[1])  # additional margin of the reprojected image region
+
+    ## additional margin of the reprojected image region
+    margin = 0.1 * min(imsize1[0], imsize1[1])  
     u0_im_ = max(min(box2_[0, :]) - margin, u0)
     u1_im_ = min(max(box2_[0, :]) + margin, u1)
     v0_im_ = max(min(box2_[1, :]) - margin, v0)
@@ -563,8 +567,10 @@ def local_TPS(
     hy_sub = np.zeros((int(np.ceil(imh_ / intv_mesh)), int(np.ceil(imw_ / intv_mesh))))
     for kf in range(n):
         dist2 = (u_im_ - x1_[kf]) ** 2 + (v_im_ - y1_[kf]) ** 2
+
         # clip zeros to small value so log is numerically stable:
         dist2 = np.clip(dist2, EPS, None)
+        
         rbf = 0.5 * dist2 * np.log(dist2)
         gx_sub = gx_sub + wx[kf] * rbf
         hy_sub = hy_sub + wy[kf] * rbf
@@ -619,16 +625,5 @@ def local_TPS(
     stitching_res = im1_p * warped_mask1 + im2_p * warped_mask2
 
     stitching_res_color = im1_color_p * warped_mask1[:, :, np.newaxis] + im2_color_p * warped_mask2[:, :, np.newaxis]
-    
-    
-    # fig, axs = plt.subplots(nrows=2, ncols=1)
-
-    # for ax in axs.flat:
-    #     ax.axis('off')
-    
-    # axs[0].imshow(stitching_res)
-    # axs[1].imshow(stitching_res_color.astype(np.uint8))
-    # plt.show()
-    # exit()
     
     return stitching_res, stitching_res_color, [v, u], [v_, u_], mass, overelap_mass

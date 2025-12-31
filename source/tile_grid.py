@@ -4,10 +4,10 @@ import cv2
 import pandas as pd
 
 def read_image(fname, grayscale=True):
-    image = cv2.cvtColor(cv2.imread(fname), cv2.COLOR_BGR2RGB)
+    image = cv2.imread(fname)
 
     if grayscale:
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     return image
 

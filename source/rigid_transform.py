@@ -5,8 +5,8 @@ import cv2
 import numpy as np
 from scipy import linalg
 
-from Utils import SIFT, ORB, MSER, KAZE, FREAK, flann_match, flann_match_subset, generate_None_list, rigidity_cons
-from vis_utils import draw_matches_helper
+from .Utils import SIFT, ORB, MSER, KAZE, FREAK, flann_match, flann_match_subset, generate_None_list, rigidity_cons
+from .vis_utils import draw_matches_helper
 
 logger = logging.getLogger(__name__)
 
